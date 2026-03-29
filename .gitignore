@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+
+# Environment / secrets
+.env
+*.env
+
+# Simulation outputs
+results/
+*.spice
+*.gds
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+.ipynb_checkpoints/
+circuits_yaml/.ipynb_checkpoints/
+circuits_yaml/.txt
+circuit_sim/.ipynb_checkpoints/
+circuit_sim/__pycache__/
