@@ -64,19 +64,19 @@ def aggregate_trial_metrics_across_dirs(base_results_dir, n_trials):
                 }
                 
                 all_metrics.append(metrics)
-                print(f"    ✓ Found trial {trial_idx} metrics")
-                print(f"      - Best FOM: {metrics['best_fom']}")
-                print(f"      - Evals to best: {metrics['evals_to_best']}/{metrics['total_designs_searched']}")
-                print(f"      - Time: {metrics['total_time_seconds']:.1f}s")
-                print(f"      - Success: {metrics['success']}")
+                print(f"    Found trial {trial_idx} metrics")
+                print(f"    - Best FOM: {metrics['best_fom']}")
+                print(f"    - Evals to best: {metrics['evals_to_best']}/{metrics['total_designs_searched']}")
+                print(f"    - Time: {metrics['total_time_seconds']:.1f}s")
+                print(f"    - Success: {metrics['success']}")
         else:
-            print(f"    ✗ Not found: {trial_summary_file}")
+            print(f"  Not found: {trial_summary_file}")
     
     if not all_metrics:
-        print(f"  ❌ No metrics found")
+        print(f"  No metrics found")
         return None
     
-    print(f"  ✓ Successfully loaded {len(all_metrics)}/{n_trials} trials\n")
+    print(f" Successfully loaded {len(all_metrics)}/{n_trials} trials\n")
     
     # Extract data for statistics
     best_foms = [m['best_fom'] for m in all_metrics if m['best_fom'] is not None]
@@ -85,7 +85,7 @@ def aggregate_trial_metrics_across_dirs(base_results_dir, n_trials):
     successes = [m['success'] for m in all_metrics]
     
     if not best_foms:
-        print(f"  ❌ No valid FOM values found")
+        print(f"  No valid FOM values found")
         return None
     
     return {
@@ -106,7 +106,7 @@ def save_global_summary(all_circuit_results, summary_file="./all_circuits_llm_ag
     """Save or update global summary file"""
     with open(summary_file, 'w') as f:
         json.dump(all_circuit_results, f, indent=2)
-    print(f"📊 Global summary updated: {summary_file}")
+    print(f"Global summary updated: {summary_file}")
     
 def main():
     """Run LLM-guided optimization for all circuits with multiple trials"""
@@ -150,14 +150,14 @@ def main():
         
         # Skip if already completed
         if circuit_name in all_circuit_results and all_circuit_results[circuit_name].get('status') == 'SUCCESS':
-            print(f"⏭️  {circuit_name} already completed, skipping...\n")
+            print(f"{circuit_name} already completed, skipping...\n")
             continue
         
         config_path = circuit_info['config_path']
         
         # Check if config exists
         if not os.path.exists(config_path):
-            print(f"❌ Config file not found: {config_path}")
+            print(f"Config file not found: {config_path}")
             all_circuit_results[circuit_name] = {
                 "status": "FAILED",
                 "error": "Config file not found",
@@ -223,10 +223,10 @@ def main():
                 trial_result["status"] = "SUCCESS"
                 trial_result["timestamp"] = datetime.now().isoformat()
                 
-                print(f"\n  ✅ {circuit_name} Trial {trial_idx + 1}/{n_trials} completed")
+                print(f"\n {circuit_name} Trial {trial_idx + 1}/{n_trials} completed")
                 
             except KeyboardInterrupt:
-                print(f"\n  ⚠️  Interrupted by user")
+                print(f"\n  Interrupted by user")
                 
                 # Mark trial as interrupted
                 trial_result["status"] = "INTERRUPTED"
@@ -243,7 +243,7 @@ def main():
                 raise
                 
             except Exception as e:
-                print(f"\n  ❌ {circuit_name} Trial {trial_idx + 1}/{n_trials} failed: {e}")
+                print(f"\n  {circuit_name} Trial {trial_idx + 1}/{n_trials} failed: {e}")
                 import traceback
                 traceback.print_exc()
                 
@@ -283,7 +283,7 @@ def main():
             with open(aggregated_file, 'w') as f:
                 json.dump(aggregated, f, indent=2)
             
-            print(f"📊 {circuit_name} aggregated results saved to: {aggregated_file}\n")
+            print(f"{circuit_name} aggregated results saved to: {aggregated_file}\n")
             
             all_circuit_results[circuit_name] = {
                 "status": "SUCCESS",
@@ -292,7 +292,7 @@ def main():
                 "timestamp": datetime.now().isoformat()
             }
         else:
-            print(f"❌ No valid results to aggregate for {circuit_name}\n")
+            print(f"No valid results to aggregate for {circuit_name}\n")
             all_circuit_results[circuit_name] = {
                 "status": "FAILED",
                 "error": "No valid metrics",
@@ -302,7 +302,7 @@ def main():
         
         # Save global summary after each circuit
         save_global_summary(all_circuit_results, global_summary_file)
-        print(f"✅ {circuit_name} results saved to global summary\n")
+        print(f"{circuit_name} results saved to global summary\n")
     
     # ========================================================================
     # FINAL SUMMARY TABLE
@@ -326,7 +326,7 @@ def main():
             print(f"{circuit_name:<20} {status}")
     
     print(f"{'='*80}\n")
-    print(f"✅ ALL CIRCUITS COMPLETED\n")
+    print(f"ALL CIRCUITS COMPLETED\n")
 
 if __name__ == "__main__":
     main()
