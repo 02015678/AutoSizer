@@ -20,7 +20,7 @@ import re
 import numpy as np
 from dataclasses import dataclass, field
 from typing import Sequence, List, Optional, Mapping, Dict, Any
-from advanced_search_methods_test import enhanced_generate_search_points, AdvancedSearchMethods
+from advanced_search_methods import enhanced_generate_search_points, AdvancedSearchMethods
 import yaml, string
 import math
 from circuit_sim.vco_characterization import simulate_vco
@@ -39,7 +39,7 @@ from circuit_sim.sim_bandpf import simulate_folder_cascode_ota_with_bpf
 def aggregate_trial_metrics(results_dir, n_trials):
     """Aggregate metrics across all trials"""
     all_metrics = []
-    
+
     for trial_idx in range(n_trials):
         #summary_file = results_dir / f"optimization_summary_trial_{trial_idx}.json"
         summary_file = os.path.join(results_dir, f"optimization_summary_trial_{trial_idx}.json")
@@ -47,18 +47,18 @@ def aggregate_trial_metrics(results_dir, n_trials):
             with open(summary_file, 'r') as f:
                 data = json.load(f)
                 all_metrics.append(data['metrics'])
-    
+
     if not all_metrics:
         return None
-    
+
     # Calculate averages and std
     import numpy as np
-    
+
     best_foms = [m['best_fom'] for m in all_metrics]
     evals_to_best = [m['evals_to_best'] for m in all_metrics]
     times = [m['time_to_best_seconds'] for m in all_metrics]
     successes = [m['success'] for m in all_metrics]
-    
+
     return {
         'avg_best_fom': np.mean(best_foms),
         'std_best_fom': np.std(best_foms),
@@ -74,7 +74,7 @@ def parse_user_specs(user_specs_metric):
     import re
     constraints = []
     parts = user_specs_metric.split(' AND ')
-    
+
     for part in parts:
         part = part.strip()
         # Match patterns like "fom > 1.5" or "power_dc < 50.0"
@@ -86,7 +86,7 @@ def parse_user_specs(user_specs_metric):
                 'operator': operator,
                 'target': float(value)
             })
-    
+
     return constraints
 
 
@@ -96,23 +96,23 @@ def calculate_constraint_satisfaction_score(design_dict, user_specs_metric):
     Returns: (num_satisfied, total_violation_score)
     """
     constraints = parse_user_specs(user_specs_metric)
-    
+
     num_satisfied = 0
     total_violation = 0
-    
+
     for constraint in constraints:
         metric = constraint['metric']
         target = constraint['target']
         op = constraint['operator']
         actual = design_dict.get(metric)
-        
+
         if actual is None:
             total_violation += 1e6  # Large penalty for missing metrics
             continue
-        
+
         satisfied = False
         violation = 0
-        
+
         if op == '>':
             satisfied = actual > target
             violation = max(0, target - actual) / abs(target) if not satisfied else 0
@@ -125,19 +125,19 @@ def calculate_constraint_satisfaction_score(design_dict, user_specs_metric):
         elif op == '<=':
             satisfied = actual <= target
             violation = max(0, actual - target) / abs(target) if not satisfied else 0
-        
+
         if satisfied:
             num_satisfied += 1
         else:
             total_violation += violation
-    
+
     return num_satisfied, total_violation
 
 
 def multi_objective_sort_key_hybrid(design, user_specs_metric):
     """
     Hybrid ranking: hard constraint on satisfaction + soft optimization of FOM
-    
+
     Priority 1: All specs met? (binary: yes=1, no=0)
     Priority 2 (if no): How many specs met + how bad violations
     Priority 3: Maximize FOM
@@ -145,15 +145,15 @@ def multi_objective_sort_key_hybrid(design, user_specs_metric):
     design_dict = design.to_dict() if hasattr(design, 'to_dict') else design
     num_satisfied, violation = calculate_constraint_satisfaction_score(design_dict, user_specs_metric)
     fom = getattr(design, 'fom', 0) if hasattr(design, 'fom') else design.get('fom', 0)
-    
+
     if fom is None:
         fom = 0
-    
+
     total_constraints = len(parse_user_specs(user_specs_metric))
-    
+
     # Critical: Does it meet ALL constraints?
     all_satisfied = (num_satisfied == total_constraints)
-    
+
     if all_satisfied:
         # If all specs met, rank purely by FOM (optimize performance)
         return (1, 0, fom)  # (all_met=1, violation=0, fom)
@@ -172,14 +172,14 @@ def single_objective_sort_key_fom(design):
     if fom is None:
         fom = 0
     return fom
-    
+
 # @dataclass
 # class OTAResult:
 #     """Generic container for circuit simulation results."""
 #     results: Dict[str, Any] = field(default_factory=dict)
 #     area: Optional[float] = None
 #     fom_per_area: Optional[float] = None
-    
+
 #     # Add this method to allow attribute access
 #     def __getattr__(self, name):
 #         """Allow accessing results dict keys as attributes."""
@@ -191,21 +191,21 @@ def single_objective_sort_key_fom(design):
 #             return self.results[name]
 #         except KeyError:
 #             raise AttributeError(f"'OTAResult' object has no attribute '{name}'")
-    
+
 #     # --- Methods ---
 #     def calculate_fom_per_area(self):
 #         """Compute FOM/Area if both values exist."""
 #         fom = self.results.get("fom")
 #         if fom is not None and self.area:
 #             self.fom_per_area = (fom / self.area) * 100
-    
+
 #     def to_dict(self) -> Dict[str, Any]:
 #         """Return all stored values as a dict."""
 #         d = dict(self.results)
 #         d["area"] = self.area
 #         d["fom_per_area"] = self.fom_per_area
 #         return d
-    
+
 #     def __str__(self) -> str:
 #         """Pretty summary string — adapt automatically to whatever keys exist."""
 #         lines = []
@@ -234,7 +234,7 @@ class OTAResult:
     results: Dict[str, Any] = field(default_factory=dict)
     area: Optional[float] = None
     fom_per_area: Optional[float] = None
-    
+
     def __getattr__(self, name):
         """Allow accessing results dict keys as attributes."""
         if name in ('results', 'area', 'fom_per_area'):
@@ -243,24 +243,24 @@ class OTAResult:
             return self.results[name]
         except KeyError:
             raise AttributeError(f"'OTAResult' object has no attribute '{name}'")
-    
+
     def calculate_fom_per_area(self):
         """Compute FOM/Area if both values exist."""
         fom = self.results.get("fom")
         if fom is not None and self.area:
             self.fom_per_area = (fom / self.area) * 100
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Return all stored values as a dict."""
         d = dict(self.results)
         d["area"] = self.area
         d["fom_per_area"] = self.fom_per_area
         return d
-    
+
     def __str__(self) -> str:
         """Pretty summary string — adapt automatically to whatever keys exist."""
         lines = []
-        
+
         # Design variables (widths, params, etc.)
         var_keys = [k for k in self.results.keys() if "base" in k or k.lower() in ("l", "ibias")]
         if var_keys:
@@ -279,26 +279,26 @@ class OTAResult:
             if var_parts:
                 vars_str = " ".join(var_parts)
                 lines.append(vars_str)
-        
+
         # Metrics (all other keys) - HANDLE ALL TYPES SAFELY
         metric_keys = [k for k in self.results.keys() if k not in var_keys]
         if metric_keys:
             metric_parts = []
             for k in metric_keys:
                 value = self.results[k]
-                
+
                 # Handle None
                 if value is None:
                     metric_parts.append(f"{k}=None")
-                
+
                 # Handle strings (like "NA")
                 elif isinstance(value, str):
                     metric_parts.append(f"{k}={value}")
-                
+
                 # Handle boolean
                 elif isinstance(value, bool):
                     metric_parts.append(f"{k}={value}")
-                
+
                 # Handle numbers (int or float)
                 elif isinstance(value, (int, float)):
                     try:
@@ -307,15 +307,15 @@ class OTAResult:
                     except (ValueError, TypeError, OverflowError):
                         # If conversion/formatting fails, use default string
                         metric_parts.append(f"{k}={value}")
-                
+
                 # Handle any other type
                 else:
                     metric_parts.append(f"{k}={str(value)}")
-            
+
             if metric_parts:
                 metrics_str = " ".join(metric_parts)
                 lines.append(metrics_str)
-        
+
         # Area info
         if self.area is not None:
             try:
@@ -325,7 +325,7 @@ class OTAResult:
                 lines.append(area_str)
             except:
                 lines.append(f"area={self.area}")
-        
+
         return " | ".join(lines) if lines else "Empty OTAResult"
 
 @dataclass
@@ -346,8 +346,8 @@ class IterationResult:
 
 class ControlledOTAOptimizer:
     """Manages controlled step-by-step optimization"""
-    
-    def __init__(self, config, user_specs: str = None, llm_agent=None, optimization_config=None, ranking_method='fom_only'):
+
+    def __init__(self, config, user_specs: str = None, llm_agent=None, optimization_config=None, ranking_method='hybrid'):
 
         self.start_time = None  # ← Add this
         self.iteration_times = []
@@ -359,7 +359,7 @@ class ControlledOTAOptimizer:
         self.ranking_method = ranking_method  # Make sure this line exists
         self.user_specs_metric = self.config['user_specs_metric']  # Make sure this exists
 
-        
+
         self.var_names = list(self.config['variable'].keys())
 
         # Store optimization config from LLM
@@ -373,7 +373,7 @@ class ControlledOTAOptimizer:
         # Parse objective - need LLM agent here
         self.user_specs = user_specs
         self.llm_agent = llm_agent  # Assign BEFORE parsing
-        
+
         # Get target metric from LLM agent (already extracted during LLM agent init)
         if self.llm_agent and hasattr(self.llm_agent, 'target_metric'):
             self.target_metric = self.llm_agent.target_metric
@@ -389,16 +389,16 @@ class ControlledOTAOptimizer:
             }
             self.objective_metric = 'fom'
             self.maximize = True
-            
+
     def sort_designs(self, designs):
         """
         Sort designs based on ranking method with robust error handling
-        
+
         Parameters:
         -----------
         designs: list
             List of design results (OTAResult objects)
-        
+
         Returns:
         --------
         list: Sorted designs (valid designs only)
@@ -407,28 +407,28 @@ class ControlledOTAOptimizer:
         if designs is None:
             print("  Warning: designs is None")
             return []
-        
+
         try:
             if not hasattr(designs, '__iter__'):
                 print("  Warning: designs is not iterable")
                 return []
-            
+
             if len(designs) == 0:
                 print("  Warning: designs is empty")
                 return []
         except Exception as e:
             print(f"  Warning: Cannot process designs: {e}")
             return []
-        
+
         # Filter out None FOM values
         valid_results = []
         invalid_results = []
-        
+
         for r in designs:
             if r is None:
                 invalid_results.append(r)
                 continue
-            
+
             try:
                 fom_value = getattr(r, 'fom', None)
                 if fom_value is not None:
@@ -438,43 +438,43 @@ class ControlledOTAOptimizer:
             except Exception as e:
                 print(f"  Warning: Error accessing FOM for design: {e}")
                 invalid_results.append(r)
-        
+
         if invalid_results:
             print(f"  Warning: {len(invalid_results)}/{len(designs)} designs failed to produce valid FOM")
-        
+
         if not valid_results:
             print(" Error: All designs failed to produce valid FOM!")
             return []
-        
+
         # Sort based on ranking method
         print("########################")
         print(self.ranking_method)
         print("########################")
         try:
-            if self.ranking_method == 'hybrid':
-                results_sorted = sorted(
-                    valid_results,
-                    key=lambda x: multi_objective_sort_key_hybrid(x, self.user_specs_metric),
-                    reverse=True
-                )
-                print(f"✅ Sorted {len(valid_results)} designs using HYBRID ranking")
-            else:  # 'fom_only'
+            if self.ranking_method == 'fom_only':
                 results_sorted = sorted(
                     valid_results,
                     key=lambda x: single_objective_sort_key_fom(x),
                     reverse=True
                 )
                 print(f"✅ Sorted {len(valid_results)} designs using FOM-ONLY ranking")
-            
+            else:  # default: 'hybrid' — constraints first, then FOM
+                results_sorted = sorted(
+                    valid_results,
+                    key=lambda x: multi_objective_sort_key_hybrid(x, self.user_specs_metric),
+                    reverse=True
+                )
+                print(f"✅ Sorted {len(valid_results)} designs using HYBRID ranking")
+
             return results_sorted
-    
+
         except Exception as e:
             print(f"❌ Error during sorting: {e}")
             import traceback
             traceback.print_exc()
             print("   Falling back to unsorted valid results")
             return valid_results
-        
+
     def log(self, message, level="INFO"):
         """Logging with timestamp"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -513,7 +513,7 @@ class ControlledOTAOptimizer:
             # Use provided trial values
             mapping = dict(zip(var_names, trial_values))
             return lambda name: mapping.get(name)
-        
+
         # Build from config value ranges
         def provider(name):
             # PRIORITY 1: Check for variable-specific values
@@ -522,7 +522,7 @@ class ControlledOTAOptimizer:
                 values = self.config[specific_key]
                 if values:
                     return random.choice(values)
-            
+
             # PRIORITY 2: Check for generic W_values/L_values
             if name.startswith('W_'):
                 if 'W_values' in self.config:
@@ -530,10 +530,10 @@ class ControlledOTAOptimizer:
             elif name.startswith('L_'):
                 if 'L_values' in self.config:
                     return random.choice(self.config['L_values'])
-            
+
             # PRIORITY 3: Fallback to default
             return None
-        
+
         return provider
 
 
@@ -543,7 +543,7 @@ class ControlledOTAOptimizer:
         for pin in subckt_pins:
             pin_str = str(pin)
             pin_upper = pin_str.upper()
-            
+
             # Match pin to testbench signal
             matched = False
             for expected_pin, signal in testbench_signals.items():
@@ -551,7 +551,7 @@ class ControlledOTAOptimizer:
                     inst_connections.append(signal)
                     matched = True
                     break
-            
+
             # if not matched:
             #     # This is an internal node - leave it unconnected (will float internally)
             #     # We need to create a dummy node for it
@@ -563,10 +563,10 @@ class ControlledOTAOptimizer:
                     inst_connections.append("0")
                 else:
                     inst_connections.append(pin_str.lower() + "_internal")
-        
+
         inst_pins = ' '.join(inst_connections)
         return inst_pins
-    
+
 
 
     def parse_pex_subcircuit(self, netlist_path, target_name=None):
@@ -576,18 +576,18 @@ class ControlledOTAOptimizer:
         """
         with open(netlist_path, "r") as f:
             content = f.read()
-    
+
         lines = content.splitlines()
         subckt_name = None
         pins = []
-    
+
         for i, raw in enumerate(lines):
             line = raw.strip()
-    
+
             # Skip comments and blank lines
             if not line or line.startswith(('*', ';', '//')):
                 continue
-    
+
             # Detect the .subckt start
             if line.lower().startswith(".subckt"):
                 parts = line.split()
@@ -595,7 +595,7 @@ class ControlledOTAOptimizer:
                     continue  # malformed line
                 subckt_name = parts[1]
                 pins = parts[2:]
-    
+
                 # Handle continuation lines starting with '+'
                 j = i + 1
                 while j < len(lines):
@@ -608,14 +608,14 @@ class ControlledOTAOptimizer:
                     else:
                         break
                 break  # stop after first subckt found
-    
+
         if not subckt_name:
             self.log("No .subckt definition found.", "ERROR")
             return None, None, None, None, content
-    
+
         # Normalize pins
         pins = [("0" if str(p).strip().upper() in ("0", "GND") else str(p).strip()) for p in pins]
-    
+
         # Separate I/O and internal pins (based on config)
         I_O_pins_cfg = [str(x).strip().upper() for x in self.config.get("I_O_pins", [])]
         io_pins = []
@@ -626,11 +626,11 @@ class ControlledOTAOptimizer:
                 io_pins.append(p)
             else:
                 internal_pins.append(p)
-    
+
         self.log(f"PEX subcircuit: {subckt_name}", "INFO")
         self.log(f"  I/O pins: {io_pins}", "INFO")
         self.log(f"  Internal nodes (will be left floating): {internal_pins}", "INFO")
-    
+
         return subckt_name, pins, io_pins, internal_pins, content
 
 
@@ -638,14 +638,14 @@ class ControlledOTAOptimizer:
         """
         Fully generic simulator runner for arbitrary circuits.
         Supports both single-point (OTA) and multi-point (VCO) characterization.
-        
+
         Parameters:
         -----------
         trial_values: list or dict
             Values for optimization variables
         netlist_path: str, optional
             Path to PEX netlist for post-layout simulation
-            
+
         Returns:
         --------
         OTAResult object with simulation results
@@ -657,19 +657,19 @@ class ControlledOTAOptimizer:
 
 
         original_dir = os.getcwd()
-    
+
         var_names = list(self.config['variable'].keys())
         variables = {name: None for name in var_names}
-        
+
         pdk_lib_path       = self.config["pdk_lib_path"]
         subckt_tmpl        = self.config["ota_subckt_template"]
         tb_tmpl            = self.config["testbench_template"]
         params             = dict(self.config.get("params", {}))
-        
+
         # Get scaling rules - both are optional
         width_scales       = dict(self.config.get("width_scales", {}))
         length_scales      = dict(self.config.get("length_scales", {}))
-        
+
         subckt_name        = self.config.get("subckt_name")
         subckt_pins        = list(self.config.get("subckt_pins", []))
         I_O_pins           = list(self.config.get("I_O_pins", []))
@@ -677,14 +677,14 @@ class ControlledOTAOptimizer:
         metrics            = list(self.config.get("metrics", []))
         netlist_filename   = self.config.get("netlist_filename", "circuit_sim.spice")
         Pex_netlist_filename   = self.config.get("netlist_filename", "circuit_sim_pex.spice")
-        
+
         timeout_sec        = self.config.get("timeout_sec", 120)
         value_provider = self.make_provider(trial_values, var_names)
-        
+
         results_dir = self.config.get("results_dir", "./results")
         os.makedirs(results_dir, exist_ok=True)
         netlist_path_full = os.path.join(results_dir, netlist_filename)
-        
+
         def resolve_key(k, fmt, provider):
             if k not in fmt or fmt[k] is None:
                 if callable(provider):
@@ -692,11 +692,11 @@ class ControlledOTAOptimizer:
                     if val is not None:
                         fmt[k] = val
             return fmt.get(k)
-    
+
         def apply_scales(scales_dict, fmt, provider, scale_type=""):
             """
             Apply scaling transformations from scales_dict
-            
+
             Parameters:
             -----------
             scales_dict: dict
@@ -710,7 +710,7 @@ class ControlledOTAOptimizer:
             """
             if not scales_dict:
                 return
-                
+
             for final_name, pair in scales_dict.items():
                 if not (isinstance(pair, (list, tuple)) and len(pair) == 2):
                     raise ValueError(
@@ -718,12 +718,12 @@ class ControlledOTAOptimizer:
                         f"must be [unit_key, factor], got: {pair}"
                     )
                 unit_key, factor = pair
-                
+
                 resolve_key(unit_key, fmt, provider)
-                
+
                 if final_name in fmt and fmt[final_name] is not None:
                     continue
-                    
+
                 if unit_key not in fmt or fmt[unit_key] is None:
                     raise KeyError(
                         f"Scale for '{final_name}' requires '{unit_key}', which is missing and "
@@ -732,26 +732,26 @@ class ControlledOTAOptimizer:
                 val = fmt[unit_key] * factor
                 fmt[final_name] = round(val, 2)
 
-    
+
         # =======================================================================
         # MAIN SIMULATION FLOW
         # =======================================================================
-    
+
         if netlist_path is None:
             # PRE-LAYOUT PATH
-            
+
             fmt = {}
             fmt.update(params)
             fmt.update(variables)
             fmt["pdk_lib_path"] = pdk_lib_path
             fmt["subckt_name"]  = subckt_name
             fmt.update(testbench_signals)
-        
+
             # Determine required placeholders
             required = set()
             required |= self._placeholders_in_format(subckt_tmpl)
             required |= self._placeholders_in_format(tb_tmpl)
-            
+
             # Add width_scales requirements
             if width_scales:
                 for final_name, pair in width_scales.items():
@@ -759,7 +759,7 @@ class ControlledOTAOptimizer:
                         unit_key, _ = pair
                         required.add(unit_key)
                         required.add(final_name)
-            
+
             # Add length_scales requirements
             if length_scales:
                 for final_name, pair in length_scales.items():
@@ -767,18 +767,18 @@ class ControlledOTAOptimizer:
                         unit_key, _ = pair
                         required.add(unit_key)
                         required.add(final_name)
-        
+
             # Resolve everything
             for k in required:
                 resolve_key(k, fmt, value_provider)
-        
+
             # Apply scales
             if width_scales:
                 apply_scales(width_scales, fmt, value_provider, scale_type="width")
-            
+
             if length_scales:
                 apply_scales(length_scales, fmt, value_provider, scale_type="length")
-            
+
             # ===================================================================
             # CIRCUIT-SPECIFIC COMPUTED VALUES (BEFORE MISSING CHECK)
             # ===================================================================
@@ -786,42 +786,42 @@ class ControlledOTAOptimizer:
             # bandgap need resistor device
             if 'pnp_model_path' in required:
                 fmt['pnp_model_path'] = self.config["pnp_model_path"]
-            
+
             # VCO: Calculate cap_total if needed
             if 'cap_total' in required:
                 v_ctrl_raw = fmt.get('v_ctrl')
                 if v_ctrl_raw is None:
                     v_ctrl_raw = params.get('v_ctrl', 0.9)
-                
+
                 vdd_raw = fmt.get('vdd')
                 if vdd_raw is None:
                     vdd_raw = params.get('vdd', 1.8)
-                
+
                 cap_base_raw = fmt.get('cap_base')
                 if cap_base_raw is None:
                     cap_base_raw = params.get('cap_base', 5e-15)
-                
+
                 cap_variable_max_raw = fmt.get('cap_variable_max')
                 if cap_variable_max_raw is None:
                     cap_variable_max_raw = params.get('cap_variable_max', 50e-15)
-                
+
                 v_ctrl = float(v_ctrl_raw)
                 vdd = float(vdd_raw)
                 cap_base = float(cap_base_raw)
                 cap_variable_max = float(cap_variable_max_raw)
-                
+
                 cap_variable = (v_ctrl / vdd) * cap_variable_max
                 fmt['cap_total'] = cap_base + cap_variable
-            
+
             # ===================================================================
-    
+
             # Build instance pins
             inst_pins = self._build_instantiation_pins(subckt_pins, testbench_signals)
             fmt["inst_pins"] = inst_pins
-            
+
             tb_keys = self._placeholders_in_format(tb_tmpl)
-            tb_keys.discard("ota_subckt")  
-        
+            tb_keys.discard("ota_subckt")
+
             # Final missing check
             missing = sorted(
                 k for k in (self._placeholders_in_format(subckt_tmpl) | tb_keys)
@@ -837,34 +837,34 @@ class ControlledOTAOptimizer:
                     print(f"  - {key}: {fmt[key]}")
                 print(f"{'='*80}\n")
                 raise KeyError("Missing placeholder values: " + ", ".join(missing))
-        
+
             # Render netlist
             subckt_text = subckt_tmpl.format(**fmt)
             netlist = tb_tmpl.format(ota_subckt=subckt_text, **fmt)
-        
+
             with open(netlist_path_full, "w") as f:
                 f.write(netlist)
-    
+
         elif trial_values is not None and netlist_path is not None:
             # POST-PEX PATH
-            
+
             subckt_name, subckt_pins, io_pins, internal_pins, ota_netlist = self.parse_pex_subcircuit(netlist_path)
-    
+
             inst_pins = self._build_instantiation_pins(subckt_pins, testbench_signals)
-            
+
             fmt = {
                 "pdk_lib_path": self.config["pdk_lib_path"],
                 "subckt_name":  self.config.get("subckt_name", subckt_name),
                 "inst_pins":    inst_pins,
                 **self.config.get("params", {}),
             }
-        
+
             variables = {var: trial_values[i] for i, var in enumerate(var_names)}
             fmt.update(variables)
-            
+
             required = set()
             required |= self._placeholders_in_format(tb_tmpl)
-            
+
             # Add width_scales requirements
             if width_scales:
                 for final_name, pair in width_scales.items():
@@ -872,7 +872,7 @@ class ControlledOTAOptimizer:
                         unit_key, _ = pair
                         required.add(unit_key)
                         required.add(final_name)
-            
+
             # Add length_scales requirements
             if length_scales:
                 for final_name, pair in length_scales.items():
@@ -880,51 +880,51 @@ class ControlledOTAOptimizer:
                         unit_key, _ = pair
                         required.add(unit_key)
                         required.add(final_name)
-            
+
             # Resolve everything
             for k in required:
                 resolve_key(k, fmt, value_provider)
-            
+
             # Apply scales
             if width_scales:
                 apply_scales(width_scales, fmt, value_provider, scale_type="width")
-            
+
             if length_scales:
                 apply_scales(length_scales, fmt, value_provider, scale_type="length")
 
             # bandgap need resistor device
             if 'pnp_model_path' in required:
                 fmt['pnp_model_path'] = self.config["pnp_model_path"]
-            
+
             # VCO: Calculate cap_total if needed
             if 'cap_total' in required:
                 v_ctrl_raw = fmt.get('v_ctrl')
                 if v_ctrl_raw is None:
                     v_ctrl_raw = params.get('v_ctrl', 0.9)
-                
+
                 vdd_raw = fmt.get('vdd')
                 if vdd_raw is None:
                     vdd_raw = params.get('vdd', 1.8)
-                
+
                 cap_base_raw = fmt.get('cap_base')
                 if cap_base_raw is None:
                     cap_base_raw = params.get('cap_base', 5e-15)
-                
+
                 cap_variable_max_raw = fmt.get('cap_variable_max')
                 if cap_variable_max_raw is None:
                     cap_variable_max_raw = params.get('cap_variable_max', 50e-15)
-                
+
                 v_ctrl = float(v_ctrl_raw)
                 vdd = float(vdd_raw)
                 cap_base = float(cap_base_raw)
                 cap_variable_max = float(cap_variable_max_raw)
-                
+
                 cap_variable = (v_ctrl / vdd) * cap_variable_max
                 fmt['cap_total'] = cap_base + cap_variable
-            
+
             tb_keys = self._placeholders_in_format(tb_tmpl)
-            tb_keys.discard("ota_subckt")  
-            
+            tb_keys.discard("ota_subckt")
+
             # Final missing check
             missing = sorted(
                 k for k in tb_keys
@@ -940,9 +940,9 @@ class ControlledOTAOptimizer:
                     print(f"  - {key}: {fmt[key]}")
                 print(f"{'='*80}\n")
                 raise KeyError("Missing placeholder values: " + ", ".join(missing))
-            
+
             netlist = tb_tmpl.format(ota_subckt=ota_netlist, **fmt)
-    
+
             with open(netlist_path_full, "w") as f:
                 f.write(netlist)
 
@@ -950,44 +950,44 @@ class ControlledOTAOptimizer:
         # =======================================================================
         # DETECT VCO vs OTA (BEFORE RUNNING NGSPICE)
         # =======================================================================
-        
-        is_vco = ('v_ctrl_min' in params and 'v_ctrl_max' in params and 
+
+        is_vco = ('v_ctrl_min' in params and 'v_ctrl_max' in params and
                   'num_v_ctrl_points' in params and netlist_path is None)
 
-        is_switched_cap = (self.config.get('circuit_type') == 'switched_capacitor' and 
+        is_switched_cap = (self.config.get('circuit_type') == 'switched_capacitor' and
                    netlist_path is None)
 
-        is_bandgap = (self.config.get('circuit_type') == 'bandgap_reference' and 
+        is_bandgap = (self.config.get('circuit_type') == 'bandgap_reference' and
               netlist_path is None)
 
-        is_ldo = (self.config.get('circuit_type') == 'ldo_regulator' and 
+        is_ldo = (self.config.get('circuit_type') == 'ldo_regulator' and
           netlist_path is None)
 
-        is_xor = (self.config.get('circuit_type') == 'xor_gate' and 
+        is_xor = (self.config.get('circuit_type') == 'xor_gate' and
            netlist_path is None)
 
-    
-        is_nand = (self.config.get('circuit_type') == 'nand_gate' and 
+
+        is_nand = (self.config.get('circuit_type') == 'nand_gate' and
            netlist_path is None)
 
-        is_rload_amp = (self.config.get('circuit_type') == 'resistive_load_amp' and 
+        is_rload_amp = (self.config.get('circuit_type') == 'resistive_load_amp' and
                 netlist_path is None)
 
-        is_diode_load_amp = (self.config.get('circuit_type') == 'diode_load_amp' and 
+        is_diode_load_amp = (self.config.get('circuit_type') == 'diode_load_amp' and
                      netlist_path is None)
 
-        is_ring_osc = (self.config.get('circuit_type') == 'ring_oscillator' and 
+        is_ring_osc = (self.config.get('circuit_type') == 'ring_oscillator' and
                netlist_path is None)
 
-        is_fold_ota_lp = (self.config.get('circuit_type') == 'fold_cascode_ota_lp' and 
+        is_fold_ota_lp = (self.config.get('circuit_type') == 'fold_cascode_ota_lp' and
                           netlist_path is None)
-        is_fold_ota_hp = (self.config.get('circuit_type') == 'fold_cascode_ota_hp' and 
+        is_fold_ota_hp = (self.config.get('circuit_type') == 'fold_cascode_ota_hp' and
                           netlist_path is None)
-        is_fold_ota_bp = (self.config.get('circuit_type') == 'fold_cascode_ota_bp' and 
+        is_fold_ota_bp = (self.config.get('circuit_type') == 'fold_cascode_ota_bp' and
                           netlist_path is None)
-        
+
         if is_vco:
-            return self._simulate_vco_multipoint(fmt, params, subckt_tmpl, 
+            return self._simulate_vco_multipoint(fmt, params, subckt_tmpl,
                                                  timeout_sec, variables)
 
         elif is_switched_cap:
@@ -1022,11 +1022,11 @@ class ControlledOTAOptimizer:
             return self._simulate_fold_cascode_ota_hf(fmt, params, variables)
         elif is_fold_ota_bp:
             return self._simulate_fold_cascode_ota_bf(fmt, params, variables)
-        
+
         # =======================================================================
         # RUN NGSPICE
         # =======================================================================
-        
+
         result = subprocess.run(
             ["ngspice", "-b", netlist_filename],
             capture_output=True, text=True, timeout=timeout_sec,
@@ -1044,13 +1044,13 @@ class ControlledOTAOptimizer:
         # print(f"\n--- STDERR ({len(result.stderr)} chars) ---")
         # print(result.stderr)
         # print(f"{'='*80}\n")
-    
+
         if result.returncode != 0:
             raise RuntimeError(f"ngspice error:\n{result.stderr}")
-    
+
         stdout = result.stdout
-    
-        
+
+
         # OTA: Standard single-point extraction
         # def _grab(name, text):
         #     m = re.search(rf"measure:\s*{re.escape(name)}\s*=\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)",
@@ -1062,19 +1062,19 @@ class ControlledOTAOptimizer:
 
         def _grab(name, text):
             """Extract metric value from SPICE output with multiple fallback patterns"""
-            
+
             # Pattern 1: "measure: name = value"
             m = re.search(rf"measure:\s*{re.escape(name)}\s*=\s*([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)",
                           text, flags=re.IGNORECASE)
             if m:
                 return float(m.group(1))
-            
+
             # Pattern 2: "name = value" (most common)
             m = re.search(rf"{re.escape(name)}\s*=\s*([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)",
                           text, flags=re.IGNORECASE)
             if m:
                 return float(m.group(1))
-            
+
             # Pattern 3: Line-by-line fallback for edge cases
             else:
                 for line in text.split('\n'):
@@ -1086,7 +1086,7 @@ class ControlledOTAOptimizer:
                                 return float(value_str)
                         except:
                             continue
-                
+
                 # Nothing found
                 return None
 
@@ -1101,16 +1101,16 @@ class ControlledOTAOptimizer:
         # for metric, value in results.items():
         #     print(f"  {metric}: {value}")
         # print(f"{'='*80}\n")
-        
+
         # =======================================================================
         # POST-PROCESS METRICS
         # =======================================================================
-        
+
         metric_post = self.config.get("metric_post", {})
         safe_globals = {"__builtins__": {}, "math": __import__('math'), "pow": pow}
-        
+
         processed = {}
-        
+
         for name in metrics:
             spec = metric_post.get(name, {})
             raw_val = results.get(name, None)
@@ -1118,40 +1118,40 @@ class ControlledOTAOptimizer:
             decimals = spec.get("decimals", 2)
             unit     = spec.get("unit", "")
             expr     = spec.get("expr")
-        
+
             val = None
-        
+
             try:
                 if expr:
                     # Evaluate expression using processed results
                     val = eval(expr, safe_globals, processed)
                 elif raw_val is not None:
                     val = raw_val * scale
-                
+
                 if val is not None:
                     #val = round(float(val), decimals)
                     val = float(val)
             except Exception:
                 val = None
-        
+
             processed[name] = val
-    
+
         results = processed
-    
+
         # =======================================================================
         # BUILD FINAL RESULTS
         # =======================================================================
-        
+
         final_results = {}
-    
+
         # Include design variables
         for k, _ in variables.items():
             final_results[k] = fmt[k]
-    
+
         # Include metrics
         for k, v in results.items():
             final_results[k] = v
-            
+
         return OTAResult(final_results)
 
 
@@ -1162,16 +1162,16 @@ class ControlledOTAOptimizer:
         """
         import sys
         sys.path.append('.')  # Make sure we can import
-        
+
         # Import your working function
-        
-        
+
+
         # Extract parameters
         W_inv_p = fmt.get('W_inv_p', 1.0)
         W_inv_n = fmt.get('W_inv_n', 0.5)
         L_inv_p = fmt.get('L_inv_p', 0.15)
         L_inv_n = fmt.get('L_inv_n', 0.15)
-        
+
         vdd = params.get('vdd', 1.8)
         temp = params.get('temp', 27)
         v_ctrl_min = params.get('v_ctrl_min', 0.0)
@@ -1180,12 +1180,12 @@ class ControlledOTAOptimizer:
         pdk_lib_path = params.get('pdk_lib_path', self.config['pdk_lib_path'])
 
         results_dir = self.config.ge['results_dir']  # ADD THIS
-        
+
         print(f"\n{'='*80}")
         print(f"VCO CHARACTERIZATION")
         print(f"{'='*80}")
         print(f"W_inv_p={W_inv_p}, W_inv_n={W_inv_n}, L_inv_p={L_inv_p}, L_inv_n={L_inv_n}")
-        
+
         # Call your working characterization function
         results = simulate_vco(
             pdk_lib_path=pdk_lib_path,
@@ -1199,7 +1199,7 @@ class ControlledOTAOptimizer:
             num_points=num_points,
             results_dir=results_dir
         )
-        
+
         if results is None:
             # Return zeros if failed
             results = {
@@ -1211,7 +1211,7 @@ class ControlledOTAOptimizer:
                 'vco_gain_linearity': 0.0,
                 'fom': 0.0,
             }
-        
+
         # Package final results
         final_results = {}
         for k in variables.keys():
@@ -1220,7 +1220,7 @@ class ControlledOTAOptimizer:
             if k in ['W_inv_p', 'W_inv_n', 'L_inv_p', 'L_inv_n']:
                 continue  # Already have these
             final_results[k] = v
-            
+
         return OTAResult(final_results)
 
 
@@ -1231,22 +1231,22 @@ class ControlledOTAOptimizer:
         import sys
         import math
         sys.path.append('.')
-        
-        
-        
+
+
+
         # Extract parameters - CONVERT TO FLOAT
         W_op1 = float(fmt.get('W_op1', 10.0))
         W_op2 = float(fmt.get('W_op2', 10.0))
         W_sw = float(fmt.get('W_sw', 5.0))
         L_op = float(fmt.get('L_op', 0.5))
         L_sw = float(fmt.get('L_sw', 0.15))
-        
+
         C_samp = float(params.get('C_samp', 2e-12))
         C_hold = float(params.get('C_hold', 2e-12))
         C_load = float(params.get('C_load', 2e-12))
         m_op = int(params.get('m_op', 4))
         m_sw = int(params.get('m_sw', 2))
-        
+
         vdd = float(params.get('vdd', 1.8))
         vin = float(params.get('vin', 0.9))
         ibias = float(params.get('ibias', 10e-6))  # <-- Add float() here
@@ -1254,12 +1254,12 @@ class ControlledOTAOptimizer:
         pdk_lib_path = self.config['pdk_lib_path']
 
         results_dir = self.config['results_dir']  # ADD THIS
-        
+
         # print(f"\n{'='*80}")
         # print(f"SWITCHED CAPACITOR SIMULATION")
         # print(f"{'='*80}")
         # print(f"W_op1={W_op1}, W_op2={W_op2}, W_sw={W_sw}, L_op={L_op}, L_sw={L_sw}")
-        
+
         # Call simulation (uses vin_ac parameter, not vin)
         result = simulate_switched_capacitor(
             pdk_lib_path=pdk_lib_path,
@@ -1267,13 +1267,13 @@ class ControlledOTAOptimizer:
             L_op=L_op, L_sw=L_sw,
             m_op=m_op, m_sw=m_sw,
             C_samp=C_samp, C_hold=C_hold, C_load=C_load,
-            vdd=vdd, 
+            vdd=vdd,
             vin_ac=0.25,  # AC amplitude
-            ibias=ibias, 
+            ibias=ibias,
             temp_nom=temp,
             results_dir=results_dir
         )
-        
+
         if result is None:
             print("✗ Simulation failed")
             results = {
@@ -1292,11 +1292,11 @@ class ControlledOTAOptimizer:
                 'phase_margin_deg': result.phase_margin_deg if result.phase_margin_deg is not None else 0.0,
                 'ugbw_mhz': result.ugbw_mhz if result.ugbw_mhz is not None else 0.0,
             }
-        
+
         # Post-process with metric_post (FOM calculated here)
         metric_post = self.config.get("metric_post", {})
         safe_globals = {"__builtins__": {}, "math": math, "pow": pow, "abs": abs}
-        
+
         processed = {}
         for name in self.config.get('metrics', []):
             spec = metric_post.get(name, {})
@@ -1304,7 +1304,7 @@ class ControlledOTAOptimizer:
             scale = float(spec.get("scale", 1))
             decimals = spec.get("decimals", 2)
             expr = spec.get("expr")
-            
+
             val = None
             try:
                 if expr:
@@ -1312,17 +1312,17 @@ class ControlledOTAOptimizer:
                     val = eval(expr, safe_globals, processed)
                 elif raw_val is not None:
                     val = raw_val * scale
-                
+
                 if val is not None:
                     val = round(float(val), decimals)
             except Exception as e:
                 print(f"  Warning: Could not calculate {name}: {e}")
                 val = None
-            
+
             processed[name] = val
-        
+
         results = processed
-        
+
         # Package final results
         final_results = {}
         for k in variables.keys():
@@ -1337,7 +1337,7 @@ class ControlledOTAOptimizer:
               f"Power={results.get('power_uw', 0):.0f}µW PM={results.get('phase_margin_deg', 0):.1f}° "
               f"UGBW={results.get('ugbw_mhz', 0):.1f}MHz FOM={results.get('fom', 0):.4f}")
         print(f"{'='*80}")
-        
+
         # Pretty print results (matching your original format)
         # print(f"\n{'='*80}")
         # print(f"FINAL PERFORMANCE SUMMARY")
@@ -1349,7 +1349,7 @@ class ControlledOTAOptimizer:
         # print(f"UGBW:         {results.get('ugbw_mhz', 0):.1f} MHz")
         # print(f"FOM:          {results.get('fom', 0):.4f}")
         # print(f"{'='*80}\n")
-            
+
         return OTAResult(final_results)
 
 
@@ -1360,9 +1360,9 @@ class ControlledOTAOptimizer:
         import sys
         import math
         sys.path.append('.')
-        
-        
-        
+
+
+
         # Extract parameters
         W_mp = float(fmt.get('W_mp', 10.0))
         L_mp = float(fmt.get('L_mp', 2.0))
@@ -1370,7 +1370,7 @@ class ControlledOTAOptimizer:
         L_mn = float(fmt.get('L_mn', 1.0))
         L_ra = float(fmt.get('L_ra', 31.2))
         L_rb = float(fmt.get('L_rb', 132.6))
-        
+
         # Fixed parameters
         m_mp = int(params.get('m_mp', 3))
         m_mn = int(params.get('m_mn', 2))
@@ -1382,23 +1382,23 @@ class ControlledOTAOptimizer:
         L_startup = float(params.get('L_startup', 7))
         m_mp_startup = int(params.get('m_mp_startup', 1))
         m_mn_startup = int(params.get('m_mn_startup', 1))
-        
+
         vdd = float(params.get('vdd', 2.0))
         temp = int(params.get('temp', 27))
         vdd_min = float(params.get('vdd_min', 1.8))
         vdd_max = float(params.get('vdd_max', 3.3))
-        
+
         pdk_lib_path = self.config['pdk_lib_path']
         pnp_model_path = self.config.get('pnp_model_path', '')
 
         results_dir = self.config['results_dir']  # ADD THIS
-        
+
         # print(f"\n{'='*80}")
         # print(f"BANDGAP REFERENCE SIMULATION")
         # print(f"{'='*80}")
         # print(f"W_mp={W_mp}, L_mp={L_mp}, W_mn={W_mn}, L_mn={L_mn}")
         # print(f"L_ra={L_ra}, L_rb={L_rb}")
-        
+
         # Call simulation
         result = simulate_bandgap_reference(
             pdk_lib_path=pdk_lib_path,
@@ -1414,7 +1414,7 @@ class ControlledOTAOptimizer:
             vdd_range=(vdd_min, vdd_max),
             results_dir=results_dir
         )
-        
+
         if result is None:
             print("✗ Simulation failed")
             results = {
@@ -1432,11 +1432,11 @@ class ControlledOTAOptimizer:
                 'line_regulation_percent': result.line_regulation if result.line_regulation is not None else 100.0,
                 'psrr_100hz_db': result.psrr_100hz if result.psrr_100hz is not None else 0.0,
             }
-        
+
         # Post-process with metric_post (FOM calculated here)
         metric_post = self.config.get("metric_post", {})
         safe_globals = {"__builtins__": {}, "math": math, "pow": pow, "abs": abs, "max": max}
-        
+
         processed = {}
         for name in self.config.get('metrics', []):
             spec = metric_post.get(name, {})
@@ -1444,32 +1444,32 @@ class ControlledOTAOptimizer:
             scale = float(spec.get("scale", 1))
             decimals = spec.get("decimals", 2)
             expr = spec.get("expr")
-            
+
             val = None
             try:
                 if expr:
                     val = eval(expr, safe_globals, processed)
                 elif raw_val is not None:
                     val = raw_val * scale
-                
+
                 if val is not None:
                     #val = round(float(val), decimals)
                     val = float(val)
             except Exception as e:
                 print(f"  Warning: Could not calculate {name}: {e}")
                 val = None
-            
+
             processed[name] = val
-        
+
         results = processed
-        
+
         # Package final results
         final_results = {}
         for k in variables.keys():
             final_results[k] = fmt[k]
         for k, v in results.items():
             final_results[k] = v
-        
+
         # print(f"\n{'='*80}")
         # print(f"FINAL PERFORMANCE SUMMARY")
         # print(f"{'='*80}")
@@ -1488,11 +1488,11 @@ class ControlledOTAOptimizer:
               f"LineReg={results.get('line_regulation_percent', 0):.3f}%/V "
               f"PSRR={results.get('psrr_100hz_db', 0):.1f}dB FOM={results.get('fom', 0):.4f}")
         print(f"{'='*80}")
-            
+
         return OTAResult(final_results)
 
 
-    
+
     def _simulate_ldo_regulator(self, fmt, params, variables):
         """
         LDO Regulator simulation wrapper
@@ -1500,9 +1500,9 @@ class ControlledOTAOptimizer:
         import sys
         import math
         sys.path.append('.')
-        
-        
-        
+
+
+
         # Extract optimization variables
         W_pass = float(fmt.get('W_pass', 100.0))
         L_pass = float(fmt.get('L_pass', 0.5))
@@ -1510,14 +1510,14 @@ class ControlledOTAOptimizer:
         W_load = float(fmt.get('W_load', 20.0))
         W_bias = float(fmt.get('W_bias', 5.0))
         L_amp = float(fmt.get('L_amp', 1.0))
-        
+
         # Fixed parameters
         m_pass = int(params.get('m_pass', 10))
         m_diff = int(params.get('m_diff', 4))
         m_load = int(params.get('m_load', 4))
         L_r1 = float(params.get('L_r1', 156))
         L_r2 = float(params.get('L_r2', 156))
-        
+
         vdd = float(params.get('vdd', 1.8))
         vref = float(params.get('vref', 0.6))
         vout_target = float(params.get('vout_target', 1.2))
@@ -1526,16 +1526,16 @@ class ControlledOTAOptimizer:
         temp = int(params.get('temp', 27))
         temp_min = int(params.get('temp_min', -40))
         temp_max = int(params.get('temp_max', 125))
-        
+
         pdk_lib_path = self.config['pdk_lib_path']
         results_dir = self.config['results_dir']  # ADD THIS
-        
+
         # print(f"\n{'='*80}")
         # print(f"LDO REGULATOR SIMULATION")
         # print(f"{'='*80}")
         # print(f"W_pass={W_pass}, L_pass={L_pass}, W_diff={W_diff}")
         # print(f"W_load={W_load}, W_bias={W_bias}, L_amp={L_amp}")
-        
+
         # Call simulation
         result = simulate_ldo_regulator(
             pdk_lib_path=pdk_lib_path,
@@ -1549,7 +1549,7 @@ class ControlledOTAOptimizer:
             temp_range=(temp_min, temp_max),
             results_dir=results_dir
         )
-        
+
         if result is None:
             print("✗ Simulation failed")
             results = {
@@ -1569,11 +1569,11 @@ class ControlledOTAOptimizer:
                 'psrr_db': result.psrr_db if result.psrr_db is not None else 0.0,
                 'power_uw': result.power_uw if result.power_uw is not None else 9999.0,
             }
-        
+
         # Post-process with metric_post (FOM calculated here)
         metric_post = self.config.get("metric_post", {})
         safe_globals = {"__builtins__": {}, "math": math, "pow": pow, "abs": abs, "max": max}
-        
+
         processed = {}
         for name in self.config.get('metrics', []):
             spec = metric_post.get(name, {})
@@ -1581,36 +1581,36 @@ class ControlledOTAOptimizer:
             scale = float(spec.get("scale", 1))
             decimals = spec.get("decimals", 2)  # Keep this for reference but don't use it
             expr = spec.get("expr")
-            
+
             val = None
             try:
                 if expr:
                     val = eval(expr, safe_globals, processed)
                 elif raw_val is not None:
                     val = raw_val * scale
-                
+
                 # Remove this rounding step entirely
                 # if val is not None:
                 #     val = round(float(val), decimals)
-                
+
                 # Keep full precision
                 if val is not None:
                     val = float(val)  # Just convert to float, don't round
-                    
+
             except Exception as e:
                 print(f"  Warning: Could not calculate {name}: {e}")
                 val = None
-            
+
             processed[name] = val
-        
+
         results = processed
 
         # CRITICAL: Ensure 'fom' key always exists, even if None
         if 'fom' not in results:
             results['fom'] = None
             print(f"  Warning: FOM not calculated, setting to None")
-        
-        
+
+
         # Package final results
         final_results = {}
         for k in variables.keys():
@@ -1619,10 +1619,10 @@ class ControlledOTAOptimizer:
             final_results[k] = v
 
         results_filtered = {k: v for k, v in results.items() if v is not None}
-    
+
         print(f"{'='*80}")
         print(f"Params: W_pass={W_pass:.2f} L_pass={L_pass:.2f} W_diff={W_diff:.2f} W_load={W_load:.2f} W_bias={W_bias:.2f} L_amp={L_amp:.2f}")
-        
+
         # Build metrics string, filtering out None values
         metrics_parts = []
         if 'vout' in results_filtered:
@@ -1639,11 +1639,11 @@ class ControlledOTAOptimizer:
             metrics_parts.append(f"Power={results_filtered['power_uw']:.1f}µW")
         if 'fom' in results_filtered:
             metrics_parts.append(f"FOM={results_filtered['fom']:.4f}")
-        
+
         metrics_str = " | ".join(metrics_parts) if metrics_parts else "Simulation failed - no metrics available"
         print(f"Metrics: {metrics_str}")
         print(f"{'='*80}")
-        
+
         # print(f"\n{'='*80}")
         # print(f"FINAL PERFORMANCE SUMMARY")
         # print(f"{'='*80}")
@@ -1655,7 +1655,7 @@ class ControlledOTAOptimizer:
         # print(f"Power:        {results.get('power_uw', 0):.1f} µW")
         # print(f"FOM:          {results.get('fom', 0):.4f}")
         # print(f"{'='*80}\n")
-            
+
         return OTAResult(final_results)
 
 
@@ -1666,29 +1666,29 @@ class ControlledOTAOptimizer:
         import sys
         import math
         sys.path.append('.')
-        
-        
-        
+
+
+
         # Extract optimization variables
         W_pmos = float(fmt.get('W_pmos', 1.0))
         W_nmos = float(fmt.get('W_nmos', 0.5))
         L_pmos = float(fmt.get('L_pmos', 0.15))
         L_nmos = float(fmt.get('L_nmos', 0.15))
-        
+
         # Fixed parameters
         vdd = float(params.get('vdd', 1.8))
         temp = int(params.get('temp', 27))
         freq = float(params.get('freq', 100e6))
         c_load = float(params.get('c_load', 10e-15))
-        
+
         pdk_lib_path = self.config['pdk_lib_path']
         results_dir = self.config.get('results_dir', './results')
-        
+
         # print(f"\n{'='*80}")
         # print(f"NAND GATE SIMULATION")
         # print(f"{'='*80}")
         # print(f"W_pmos={W_pmos}, W_nmos={W_nmos}, L_pmos={L_pmos}, L_nmos={L_nmos}")
-        
+
         # Call simulation
         result = simulate_nand_gate(
             pdk_lib_path=pdk_lib_path,
@@ -1698,7 +1698,7 @@ class ControlledOTAOptimizer:
             freq=freq, c_load=c_load,
             results_dir=results_dir
         )
-        
+
         if result is None:
             print("✗ Simulation failed")
             results = {
@@ -1720,11 +1720,11 @@ class ControlledOTAOptimizer:
                 'noise_margin_high': result.noise_margin_high if result.noise_margin_high is not None else 0.0,
                 'noise_margin_low': result.noise_margin_low if result.noise_margin_low is not None else 0.0,
             }
-        
+
         # Post-process with metric_post (FOM calculated here)
         metric_post = self.config.get("metric_post", {})
         safe_globals = {"__builtins__": {}, "math": math, "pow": pow, "abs": abs, "max": max}
-        
+
         processed = {}
         for name in self.config.get('metrics', []):
             spec = metric_post.get(name, {})
@@ -1732,24 +1732,24 @@ class ControlledOTAOptimizer:
             scale = float(spec.get("scale", 1))
             decimals = spec.get("decimals", 2)
             expr = spec.get("expr")
-            
+
             val = None
             try:
                 if expr:
                     val = eval(expr, safe_globals, processed)
                 elif raw_val is not None:
                     val = raw_val * scale
-                
+
                 if val is not None:
                     val = round(float(val), decimals)
             except Exception as e:
                 print(f"  Warning: Could not calculate {name}: {e}")
                 val = None
-            
+
             processed[name] = val
-        
+
         results = processed
-        
+
         # Package final results
         final_results = {}
         for k in variables.keys():
@@ -1764,7 +1764,7 @@ class ControlledOTAOptimizer:
               f"Energy={results.get('energy_per_transition_fj', 0):.3f}fJ NMH={results.get('noise_margin_high', 0):.4f}V "
               f"NML={results.get('noise_margin_low', 0):.4f}V FOM={results.get('fom', 0):.4f}")
         print(f"{'='*80}")
-        
+
         # print(f"\n{'='*80}")
         # print(f"FINAL PERFORMANCE SUMMARY")
         # print(f"{'='*80}")
@@ -1777,7 +1777,7 @@ class ControlledOTAOptimizer:
         # print(f"NML:          {results.get('noise_margin_low', 0):.4f} V")
         # print(f"FOM:          {results.get('fom', 0):.4f}")
         # print(f"{'='*80}\n")
-            
+
         return OTAResult(final_results)
 
     def _simulate_xor_gate(self, fmt, params, variables):
@@ -1787,28 +1787,28 @@ class ControlledOTAOptimizer:
         import sys
         import math
         sys.path.append('.')
-        
-        
+
+
         # Extract optimization variables
         W_pmos = float(fmt.get('W_pmos', 1.0))
         W_nmos = float(fmt.get('W_nmos', 0.5))
         L_pmos = float(fmt.get('L_pmos', 0.15))
         L_nmos = float(fmt.get('L_nmos', 0.15))
-        
+
         # Fixed parameters
         vdd = float(params.get('vdd', 1.8))
         temp = int(params.get('temp', 27))
         freq = float(params.get('freq', 100e6))
         c_load = float(params.get('c_load', 10e-15))
-        
+
         pdk_lib_path = self.config['pdk_lib_path']
         results_dir = self.config.get('results_dir', './results')
-        
+
         # print(f"\n{'='*80}")
         # print(f"XOR GATE SIMULATION")
         # print(f"{'='*80}")
         # print(f"W_pmos={W_pmos}, W_nmos={W_nmos}, L_pmos={L_pmos}, L_nmos={L_nmos}")
-        
+
         # Call simulation
         result = simulate_xor_gate(
             pdk_lib_path=pdk_lib_path,
@@ -1818,7 +1818,7 @@ class ControlledOTAOptimizer:
             freq=freq, c_load=c_load,
             results_dir=results_dir
         )
-        
+
         if result is None:
             print("✗ Simulation failed")
             results = {
@@ -1836,11 +1836,11 @@ class ControlledOTAOptimizer:
                 'noise_margin_high': result.noise_margin_high if result.noise_margin_high is not None else 0.0,
                 'noise_margin_low': result.noise_margin_low if result.noise_margin_low is not None else 0.0,
             }
-        
+
         # Post-process with metric_post (FOM calculated here)
         metric_post = self.config.get("metric_post", {})
         safe_globals = {"__builtins__": {}, "math": math, "pow": pow, "abs": abs, "max": max}
-        
+
         processed = {}
         for name in self.config.get('metrics', []):
             spec = metric_post.get(name, {})
@@ -1848,24 +1848,24 @@ class ControlledOTAOptimizer:
             scale = float(spec.get("scale", 1))
             decimals = spec.get("decimals", 2)
             expr = spec.get("expr")
-            
+
             val = None
             try:
                 if expr:
                     val = eval(expr, safe_globals, processed)
                 elif raw_val is not None:
                     val = raw_val * scale
-                
+
                 if val is not None:
                     val = round(float(val), decimals)
             except Exception as e:
                 print(f"  Warning: Could not calculate {name}: {e}")
                 val = None
-            
+
             processed[name] = val
-        
+
         results = processed
-        
+
         # Package final results
         final_results = {}
         for k in variables.keys():
@@ -1881,7 +1881,7 @@ class ControlledOTAOptimizer:
               f"Energy={results.get('energy_per_transition_fj', 0):.3f}fJ NMH={results.get('noise_margin_high', 0):.4f}V "
               f"NML={results.get('noise_margin_low', 0):.4f}V FOM={results.get('fom', 0):.4f}")
         print(f"{'='*80}")
-        
+
         # print(f"\n{'='*80}")
         # print(f"FINAL PERFORMANCE SUMMARY")
         # print(f"{'='*80}")
@@ -1892,11 +1892,11 @@ class ControlledOTAOptimizer:
         # print(f"NML:          {results.get('noise_margin_low', 0):.4f} V")
         # print(f"FOM:          {results.get('fom', 0):.4f}")
         # print(f"{'='*80}\n")
-            
+
         return OTAResult(final_results)
 
 
-    
+
 
 
 
@@ -1908,22 +1908,22 @@ class ControlledOTAOptimizer:
         import sys
         import math
         sys.path.append('.')
-        
-        
+
+
         # Extract optimization variables
         W_input = float(fmt.get('W_input', 5.0))
         L_input = float(fmt.get('L_input', 0.5))
         R_load = float(fmt.get('R_load', 50e3))
-        
+
         # Fixed parameters
         vdd = float(params.get('vdd', 1.8))
         vbias = float(params.get('vbias', 0.6))
         temp = int(params.get('temp', 27))
         c_load = float(params.get('c_load', 10e-15))
-        
+
         pdk_lib_path = self.config['pdk_lib_path']
         results_dir = self.config.get('results_dir', './results')
-        
+
         # Call simulation
         result = simulate_resistive_load_amp(
             pdk_lib_path=pdk_lib_path,
@@ -1936,7 +1936,7 @@ class ControlledOTAOptimizer:
             c_load=c_load,
             results_dir=results_dir
         )
-        
+
         if result is None:
             print("✗ Simulation failed")
             results = {
@@ -1952,11 +1952,11 @@ class ControlledOTAOptimizer:
                 'power_uw': result.power_uw if result.power_uw is not None else 9999.0,
                 'output_swing_v': result.output_swing_v if result.output_swing_v is not None else 0.0,
             }
-        
+
         # Post-process with metric_post (FOM calculated here)
         metric_post = self.config.get("metric_post", {})
         safe_globals = {"__builtins__": {}, "math": math, "pow": pow, "abs": abs, "max": max}
-        
+
         processed = {}
         for name in self.config.get('metrics', []):
             spec = metric_post.get(name, {})
@@ -1964,52 +1964,52 @@ class ControlledOTAOptimizer:
             scale = float(spec.get("scale", 1))
             decimals = spec.get("decimals", 2)
             expr = spec.get("expr")
-            
+
             val = None
             try:
                 if expr:
                     val = eval(expr, safe_globals, processed)
                 elif raw_val is not None:
                     val = raw_val * scale
-                
+
                 if val is not None:
                     val = round(float(val), decimals)
             except Exception as e:
                 print(f"  Warning: Could not calculate {name}: {e}")
                 val = None
-            
+
             processed[name] = val
-        
+
         results = processed
-        
-        
+
+
         # Package final results
         final_results = {}
         for k in variables.keys():
             final_results[k] = fmt[k]
             #print(f"DEBUG: Added variable {k} = {fmt[k]}")  # Debug each addition
-        
+
         for k, v in results.items():
             final_results[k] = v
             #print(f"DEBUG: Added metric {k} = {v}")  # Debug each addition
-        
-    
+
+
         print(f"{'='*80}")
         print(f"W_input={W_input:.1f} L_input={L_input:.1f} R_load={R_load/1e3:.1f}kΩ | "
               f"Gain={results.get('gain_db', 0):.2f}dB BW={results.get('bandwidth_mhz', 0):.2f}MHz "
               f"Power={results.get('power_uw', 0):.3f}µW OutSwing={results.get('output_swing_v', 0):.4f}V "
               f"FOM={results.get('fom', 0):.4f}")
         print(f"{'='*80}")
-        
+
         # ========================================
         # DEBUG SECTION - CREATING OTAResult
         # ========================================
-        
+
         result_obj = OTAResult(results=final_results)
         # ========================================
-            
+
         return result_obj
-    
+
 
 
     def _simulate_diode_load_amp(self, fmt, params, variables):
@@ -2019,29 +2019,29 @@ class ControlledOTAOptimizer:
         import sys
         import math
         sys.path.append('.')
-        
-        
-        
+
+
+
         # Extract optimization variables
         W_input = float(fmt['W_input'])
         W_load = float(fmt['W_load'])
         L_input = float(fmt['L_input'])
         L_load = float(fmt['L_load'])
-        
+
         # Fixed parameters
         vdd = float(params.get('vdd', 1.8))
         vbias = float(params.get('vbias', 0.6))
         temp = int(params.get('temp', 27))
         c_load = float(params.get('c_load', 10e-15))
-        
+
         pdk_lib_path = self.config['pdk_lib_path']
         results_dir = self.config.get('results_dir', './results')
-        
+
         # print(f"\n{'='*80}")
         # print(f"DIODE LOAD AMPLIFIER SIMULATION")
         # print(f"{'='*80}")
         # print(f"W_input={W_input}, W_load={W_load}, L_input={L_input}, L_load={L_load}")
-        
+
         # Call simulation
         result = simulate_diode_load_amp(
             pdk_lib_path=pdk_lib_path,
@@ -2055,7 +2055,7 @@ class ControlledOTAOptimizer:
             c_load=c_load,
             results_dir=results_dir
         )
-        
+
         if result is None:
             print("✗ Simulation failed")
             results = {
@@ -2071,11 +2071,11 @@ class ControlledOTAOptimizer:
                 'power_uw': result.power_uw if result.power_uw is not None else 9999.0,
                 'output_swing_v': result.output_swing_v if result.output_swing_v is not None else 0.0,
             }
-        
+
         # Post-process with metric_post (FOM calculated here)
         metric_post = self.config.get("metric_post", {})
         safe_globals = {"__builtins__": {}, "math": math, "pow": pow, "abs": abs, "max": max}
-        
+
         processed = {}
         for name in self.config.get('metrics', []):
             spec = metric_post.get(name, {})
@@ -2083,24 +2083,24 @@ class ControlledOTAOptimizer:
             scale = float(spec.get("scale", 1))
             decimals = spec.get("decimals", 2)
             expr = spec.get("expr")
-            
+
             val = None
             try:
                 if expr:
                     val = eval(expr, safe_globals, processed)
                 elif raw_val is not None:
                     val = raw_val * scale
-                
+
                 if val is not None:
                     val = round(float(val), decimals)
             except Exception as e:
                 print(f"  Warning: Could not calculate {name}: {e}")
                 val = None
-            
+
             processed[name] = val
-        
+
         results = processed
-        
+
         # Package final results
         final_results = {}
         for k in variables.keys():
@@ -2115,7 +2115,7 @@ class ControlledOTAOptimizer:
               f"Power={results.get('power_uw', 0):.3f}µW OutSwing={results.get('output_swing_v', 0):.4f}V "
               f"FOM={results.get('fom', 0):.4f}")
         print(f"{'='*80}")
-        
+
         # print(f"\n{'='*80}")
         # print(f"FINAL PERFORMANCE SUMMARY")
         # print(f"{'='*80}")
@@ -2125,11 +2125,11 @@ class ControlledOTAOptimizer:
         # print(f"Out Swing:    {results.get('output_swing_v', 0):.4f} V")
         # print(f"FOM:          {results.get('fom', 0):.4f}")
         # print(f"{'='*80}\n")
-            
+
         return OTAResult(final_results)
 
 
-    
+
     def _simulate_ring_oscillator(self, fmt, params, variables):
         """
         3-Stage Ring Oscillator simulation wrapper
@@ -2137,7 +2137,7 @@ class ControlledOTAOptimizer:
         import sys
         import math
         sys.path.append('.')
-        
+
         # Extract optimization variables
         L_inv_values = float(fmt['L_inv'])
         W_pmos0_values = float(fmt['W_pmos0'])
@@ -2152,15 +2152,15 @@ class ControlledOTAOptimizer:
         vdd = float(params.get('vdd', 1.8))
         temp = int(params.get('temp', 27))
         c_load = float(params.get('c_load', 10e-15))
-        
+
         pdk_lib_path = self.config['pdk_lib_path']
         results_dir = self.config.get('results_dir', './results')
-        
+
         # print(f"\n{'='*80}")
         # print(f"3-STAGE RING OSCILLATOR SIMULATION")
         # print(f"{'='*80}")
         # print(f"W_inv={W_inv}, L_inv={L_inv}")
-        
+
         # Call simulation
         result = simulate_ring_oscillator(
             pdk_lib_path=pdk_lib_path,
@@ -2176,7 +2176,7 @@ class ControlledOTAOptimizer:
             c_load=c_load,
             results_dir=results_dir
         )
-        
+
         if result is None:
             print("✗ Simulation failed")
             results = {
@@ -2190,11 +2190,11 @@ class ControlledOTAOptimizer:
                 'power_uw': result.power_uw if result.power_uw is not None else 9999.0,
                 'delay_per_stage_ps': result.delay_per_stage_ps if result.delay_per_stage_ps is not None else 9999.0,
             }
-        
+
         # Post-process with metric_post (FOM calculated here)
         metric_post = self.config.get("metric_post", {})
         safe_globals = {"__builtins__": {}, "math": math, "pow": pow, "abs": abs, "max": max}
-        
+
         processed = {}
         for name in self.config.get('metrics', []):
             spec = metric_post.get(name, {})
@@ -2202,24 +2202,24 @@ class ControlledOTAOptimizer:
             scale = float(spec.get("scale", 1))
             decimals = spec.get("decimals", 2)
             expr = spec.get("expr")
-            
+
             val = None
             try:
                 if expr:
                     val = eval(expr, safe_globals, processed)
                 elif raw_val is not None:
                     val = raw_val * scale
-                
+
                 if val is not None:
                     val = round(float(val), decimals)
             except Exception as e:
                 print(f"  Warning: Could not calculate {name}: {e}")
                 val = None
-            
+
             processed[name] = val
-        
+
         results = processed
-        
+
         # Package final results
         final_results = {}
         for k in variables.keys():
@@ -2233,7 +2233,7 @@ class ControlledOTAOptimizer:
               f"Freq={results.get('frequency_mhz', 0):.2f}MHz Power={results.get('power_uw', 0):.3f}µW "
               f"Delay/Stage={results.get('delay_per_stage_ps', 0):.2f}ps FOM={results.get('fom', 0):.4f}")
         print(f"{'='*80}")
-        
+
         # print(f"\n{'='*80}")
         # print(f"FINAL PERFORMANCE SUMMARY")
         # print(f"{'='*80}")
@@ -2242,7 +2242,7 @@ class ControlledOTAOptimizer:
         # print(f"Delay/Stage:  {results.get('delay_per_stage_ps', 0):.2f} ps")
         # print(f"FOM:          {results.get('fom', 0):.4f}")
         # print(f"{'='*80}\n")
-            
+
         return OTAResult(final_results)
 
     def _simulate_fold_cascode_ota_lf(self, fmt, params, variables):
@@ -2252,8 +2252,8 @@ class ControlledOTAOptimizer:
         import sys
         import math
         sys.path.append('.')
-       
-        
+
+
         # Extract optimization variables
         W_in = float(fmt.get('W_in', 5.0))
         W_fold = float(fmt.get('W_fold', 5.0))
@@ -2266,7 +2266,7 @@ class ControlledOTAOptimizer:
         R2 = float(fmt.get('R2', 10e3))
         C1 = float(fmt.get('C1', 1e-12))
         C2 = float(fmt.get('C2', 1e-12))
-        
+
         # Fixed parameters from config
         vdd = float(params.get('vdd', 1.8))
         vbn = float(params.get('vbn', 0.6))
@@ -2276,10 +2276,10 @@ class ControlledOTAOptimizer:
         Rz = float(params.get('Rz', 1e3))
         Cc = float(params.get('Cc', 1e-12))
         itail = float(params.get('itail', 10e-6))
-        
+
         pdk_lib_path = self.config['pdk_lib_path']
         results_dir = self.config['results_dir']
-        
+
         # Call simulation
         result = simulate_folder_cascode_ota_with_lpf(
             pdk_lib_path=pdk_lib_path,
@@ -2289,7 +2289,7 @@ class ControlledOTAOptimizer:
             vdd=vdd, vbn=vbn, vbp=vbp,
             cload=cload, vcm=vcm, Rz=Rz, Cc=Cc, itail=itail
         )
-        
+
         if result is None:
             print("✗ Simulation failed")
             results = {
@@ -2317,11 +2317,11 @@ class ControlledOTAOptimizer:
                 'lpf_stopband_atten_db': result.lpf_stopband_atten_db if result.lpf_stopband_atten_db is not None else 0.0,
                 'phase_margin_deg': result.phase_margin_deg if result.phase_margin_deg is not None else 0.0,
             }
-        
+
         # Post-process with metric_post (if needed for additional FOM calculations)
         metric_post = self.config.get("metric_post", {})
         safe_globals = {"__builtins__": {}, "math": math, "pow": pow, "abs": abs, "max": max, "min": min}
-        
+
         processed = {}
         for name in self.config.get('metrics', []):
             spec = metric_post.get(name, {})
@@ -2329,31 +2329,31 @@ class ControlledOTAOptimizer:
             scale = float(spec.get("scale", 1))
             decimals = spec.get("decimals", 2)
             expr = spec.get("expr")
-            
+
             val = None
             try:
                 if expr:
                     val = eval(expr, safe_globals, {**processed, **results})
                 elif raw_val is not None:
                     val = raw_val * scale
-                
+
                 if val is not None:
                     val = float(val)
             except Exception as e:
                 print(f"  Warning: Could not calculate {name}: {e}")
                 val = None
-            
+
             processed[name] = val
-        
+
         results = processed
-        
+
         # Package final results
         final_results = {}
         for k in variables.keys():
             final_results[k] = fmt[k]
         for k, v in results.items():
             final_results[k] = v
-        
+
         # Compact output
         print(f"{'='*80}")
         print(f"W_in={W_in:.2f} W_fold={W_fold:.2f} W_sink={W_sink:.2f} W_mirr={W_mirr:.2f} "
@@ -2362,7 +2362,7 @@ class ControlledOTAOptimizer:
               f"UGBW={results.get('ugbw_mhz', 0):.2f}MHz fc={results.get('lpf_cutoff_hz', 0)/1e6:.3f}MHz "
               f"Q={results.get('lpf_q_theoretical', 0):.3f} FOM={results.get('fom', 0):.4f}")
         print(f"{'='*80}")
-            
+
         return OTAResult(final_results)
 
 
@@ -2374,8 +2374,8 @@ class ControlledOTAOptimizer:
         import sys
         import math
         sys.path.append('.')
-        
-        
+
+
         # Extract optimization variables
         W_in = float(fmt.get('W_in', 5.0))
         W_fold = float(fmt.get('W_fold', 5.0))
@@ -2388,7 +2388,7 @@ class ControlledOTAOptimizer:
         R2 = float(fmt.get('R2', 10e3))
         C1 = float(fmt.get('C1', 1e-12))
         C2 = float(fmt.get('C2', 1e-12))
-        
+
         # Fixed parameters from config
         vdd = float(params.get('vdd', 1.8))
         vbn = float(params.get('vbn', 0.6))
@@ -2398,10 +2398,10 @@ class ControlledOTAOptimizer:
         Rz = float(params.get('Rz', 1e3))
         Cc = float(params.get('Cc', 1e-12))
         itail = float(params.get('itail', 10e-6))
-        
+
         pdk_lib_path = self.config['pdk_lib_path']
         results_dir = self.config['results_dir']
-        
+
         # Call simulation
         result = simulate_folder_cascode_ota_with_hpf(
             pdk_lib_path=pdk_lib_path,
@@ -2411,7 +2411,7 @@ class ControlledOTAOptimizer:
             vdd=vdd, vbn=vbn, vbp=vbp,
             cload=cload, vcm=vcm, Rz=Rz, Cc=Cc, itail=itail
         )
-        
+
         if result is None:
             print("✗ Simulation failed")
             results = {
@@ -2439,11 +2439,11 @@ class ControlledOTAOptimizer:
                 'hpf_stopband_atten_db': result.hpf_stopband_atten_db if result.hpf_stopband_atten_db is not None else 0.0,
                 'phase_margin_deg': result.phase_margin_deg if result.phase_margin_deg is not None else 0.0,
             }
-        
+
         # Post-process with metric_post (if needed for additional FOM calculations)
         metric_post = self.config.get("metric_post", {})
         safe_globals = {"__builtins__": {}, "math": math, "pow": pow, "abs": abs, "max": max, "min": min}
-        
+
         processed = {}
         for name in self.config.get('metrics', []):
             spec = metric_post.get(name, {})
@@ -2451,31 +2451,31 @@ class ControlledOTAOptimizer:
             scale = float(spec.get("scale", 1))
             decimals = spec.get("decimals", 2)
             expr = spec.get("expr")
-            
+
             val = None
             try:
                 if expr:
                     val = eval(expr, safe_globals, {**processed, **results})
                 elif raw_val is not None:
                     val = raw_val * scale
-                
+
                 if val is not None:
                     val = float(val)
             except Exception as e:
                 print(f"  Warning: Could not calculate {name}: {e}")
                 val = None
-            
+
             processed[name] = val
-        
+
         results = processed
-        
+
         # Package final results
         final_results = {}
         for k in variables.keys():
             final_results[k] = fmt[k]
         for k, v in results.items():
             final_results[k] = v
-        
+
         # Compact output
         print(f"{'='*80}")
         print(f"W_in={W_in:.2f} W_fold={W_fold:.2f} W_sink={W_sink:.2f} W_mirr={W_mirr:.2f} "
@@ -2484,7 +2484,7 @@ class ControlledOTAOptimizer:
               f"UGBW={results.get('ugbw_mhz', 0):.2f}MHz fc={results.get('hpf_cutoff_hz', 0)/1e6:.3f}MHz "
               f"Q={results.get('hpf_q_theoretical', 0):.3f} FOM={results.get('fom', 0):.4f}")
         print(f"{'='*80}")
-            
+
         return OTAResult(final_results)
 
 
@@ -2495,8 +2495,8 @@ class ControlledOTAOptimizer:
         import sys
         import math
         sys.path.append('.')
-        
-        
+
+
         # Extract optimization variables
         W_in = float(fmt.get('W_in', 5.0))
         W_fold = float(fmt.get('W_fold', 5.0))
@@ -2509,7 +2509,7 @@ class ControlledOTAOptimizer:
         R2 = float(fmt.get('R2', 10e3))
         C1 = float(fmt.get('C1', 1e-12))
         C2 = float(fmt.get('C2', 1e-12))
-        
+
         # Fixed parameters from config
         vdd = float(params.get('vdd', 1.8))
         vbn = float(params.get('vbn', 0.6))
@@ -2517,10 +2517,10 @@ class ControlledOTAOptimizer:
         vcm = float(params.get('vcm', 0.9))
         cload = float(params.get('cload', 1e-12))
         itail = float(params.get('itail', 10e-6))
-        
+
         pdk_lib_path = self.config['pdk_lib_path']
         results_dir = self.config['results_dir']
-        
+
         # Call simulation
         result = simulate_folder_cascode_ota_with_bpf(
             pdk_lib_path=pdk_lib_path,
@@ -2530,7 +2530,7 @@ class ControlledOTAOptimizer:
             vdd=vdd, vbn=vbn, vbp=vbp,
             cload=cload, vcm=vcm, itail=itail
         )
-        
+
         if result is None:
             print("✗ Simulation failed")
             results = {
@@ -2552,11 +2552,11 @@ class ControlledOTAOptimizer:
                 'ugbw_mhz': result.ugbw_mhz if result.ugbw_mhz is not None else 0.0,
                 'fom': result.fom if result.fom is not None else 0.0,
             }
-        
+
         # Post-process with metric_post (if needed for additional FOM calculations)
         metric_post = self.config.get("metric_post", {})
         safe_globals = {"__builtins__": {}, "math": math, "pow": pow, "abs": abs, "max": max, "min": min}
-        
+
         processed = {}
         for name in self.config.get('metrics', []):
             spec = metric_post.get(name, {})
@@ -2564,31 +2564,31 @@ class ControlledOTAOptimizer:
             scale = float(spec.get("scale", 1))
             decimals = spec.get("decimals", 2)
             expr = spec.get("expr")
-            
+
             val = None
             try:
                 if expr:
                     val = eval(expr, safe_globals, {**processed, **results})
                 elif raw_val is not None:
                     val = raw_val * scale
-                
+
                 if val is not None:
                     val = float(val)
             except Exception as e:
                 print(f"  Warning: Could not calculate {name}: {e}")
                 val = None
-            
+
             processed[name] = val
-        
+
         results = processed
-        
+
         # Package final results
         final_results = {}
         for k in variables.keys():
             final_results[k] = fmt[k]
         for k, v in results.items():
             final_results[k] = v
-        
+
         # Compact output
         print(f"{'='*80}")
         print(f"W_in={W_in:.2f} W_fold={W_fold:.2f} W_sink={W_sink:.2f} W_mirr={W_mirr:.2f} "
@@ -2597,23 +2597,23 @@ class ControlledOTAOptimizer:
               f"fc={results.get('bpf_center_freq_hz', 0)/1e6:.3f}MHz BW={results.get('bpf_bandwidth_hz', 0)/1e6:.3f}MHz "
               f"Q={results.get('bpf_q_factor', 0):.3f} FOM={results.get('fom', 0):.4f}")
         print(f"{'='*80}")
-            
+
         return OTAResult(final_results)
-    
-    def generate_search_points(self, n_samples, W_values, method='random', 
+
+    def generate_search_points(self, n_samples, W_values, method='random',
                      previous_best=None, search_radius=None, algorithm_params=None):
-        
-       
+
+
         target_metric_key = self.target_metric['metric_key']
         targets = [target_metric_key]
-        
+
         # Extract weights for weighted formulations
-        if (self.target_metric.get('formulation_type') == 'weighted_difference' and 
+        if (self.target_metric.get('formulation_type') == 'weighted_difference' and
             'weights' in target_metric):
             weights = self.target_metric['weights']
         else:
             weights = None
-        
+
         return enhanced_generate_search_points(
             config=self.config,
             optimizer=self,
@@ -2628,34 +2628,34 @@ class ControlledOTAOptimizer:
             algorithm_params=algorithm_params,
             optimization_config=self.optimization_config
         )
-        
 
 
 
 
-    def _check_user_constraints(self, design: OTAResult, fom_only_check: bool = True) -> bool:
-    
+
+    def _check_user_constraints(self, design: OTAResult, fom_only_check: bool = False) -> bool:
+
         """Check if design meets user specifications
-        
+
         Args:
             design: OTAResult to check
             fom_only_check: If True, only check FOM directly. If False, use LLM for full specs.
         """
         if not self.user_specs:
             return True
-        
+
         # Get FOM value
         fom = design.fom
-        
+
         if fom is None:
             return False  # Failed simulation doesn't meet specs
-        
-        # FOM-only direct check (default)
+
+        # FOM-only direct check
         if fom_only_check:
             try:
                 # Parse ONLY the FOM line from user_specs_metric
                 spec_lines = self.user_specs_metric.strip().split('\n')
-                
+
                 fom_spec = None
                 for line in spec_lines:
                     line_stripped = line.strip()
@@ -2663,17 +2663,16 @@ class ControlledOTAOptimizer:
                     if line_lower.startswith('fom'):
                         fom_spec = line_stripped  # Use the original line, not lowercase
                         break
-                
+
                 if not fom_spec:
                     print(f"    Warning: No FOM specification found. Accepting design.")
                     return True
-                
+
                 # Parse the FOM requirement from THIS LINE ONLY
                 fom_spec_lower = fom_spec.lower()
-                
+
                 # Extract just the number after the operator
                 if '>=' in fom_spec_lower:
-                    # Split and take only the part after >=, then split by space to get first token
                     threshold_str = fom_spec_lower.split('>=')[1].strip().split()[0]
                     threshold = float(threshold_str)
                     meets_spec = fom >= threshold
@@ -2692,23 +2691,28 @@ class ControlledOTAOptimizer:
                 else:
                     print(f"    Warning: Cannot parse FOM spec '{fom_spec}'. Accepting design.")
                     return True
-                
+
                 if not meets_spec:
                     print(f"    FOM {fom:.4f} does not meet requirement: {fom_spec}")
-                
+
                 return meets_spec
-                
+
             except Exception as e:
                 print(f"    Warning: Error parsing FOM spec: {e}. Accepting design.")
                 import traceback
                 traceback.print_exc()
                 return True
-        
-    
+
+        # Full specs check (all constraints in user_specs_metric)
+        from utils.feedback_extraction import check_user_specs_met
+        design_dict = design.to_dict() if hasattr(design, 'to_dict') else design.__dict__
+        return check_user_specs_met(design_dict, self.user_specs_metric, verbose=True, fom_only_check=False)
+
+
     def search_designs(self, n_samples, method='random', previous_best=None, search_radius=None, algorithm_params=None):
         """Search N design points"""
         self.log(f"Searching {n_samples} design points using {method} method", "INFO")
-        
+
         # FIXED: Support all variable types (not just W_values)
         # Get all variable names and their value ranges
         var_values = {}
@@ -2726,19 +2730,19 @@ class ControlledOTAOptimizer:
                 var_values[var_name] = self.config['R_values']
             else:
                 raise ValueError(f"No value range found for variable {var_name}")
-        
+
         search_points = self.generate_search_points(
             n_samples, var_values, method, previous_best, search_radius, algorithm_params
         )
-        
+
         # FIXED: Use FOM directly
         target_metric_name = 'fom'
-        
+
         results = []
         for i, trial_values in enumerate(search_points, 1):
             result = self.simulate_ota_config(trial_values=trial_values)
 
-            
+
             if result:
                 results.append(result)
                 self.all_searched_designs.append(result)
@@ -2747,9 +2751,9 @@ class ControlledOTAOptimizer:
                     fom_value = result.results.get('fom', 0) if hasattr(result, 'results') else getattr(result, 'fom', 0)
                     fom_str = f"{fom_value:.4f}" if fom_value is not None else "FAILED"
                     print(f"  Progress: {i}/{n_samples} - Latest FOM: {fom_str}")
-        
+
         self.log(f"Search complete: {len(results)}/{n_samples} successful", "INFO")
-        
+
         if results:
             # Sort by FOM (always maximize)
             # results_sorted = sorted(
@@ -2762,10 +2766,10 @@ class ControlledOTAOptimizer:
             # Filter out designs with None or missing FOM
             valid_results = [r for r in results if getattr(r, 'fom', None) is not None]
             invalid_results = [r for r in results if getattr(r, 'fom', None) is None]
-            
+
             if invalid_results:
                 print(f"⚠️  Warning: {len(invalid_results)}/{len(results)} designs failed to produce valid FOM")
-            
+
             # Sort only valid results
             if valid_results:
                 results_sorted = self.sort_designs(valid_results)
@@ -2773,16 +2777,16 @@ class ControlledOTAOptimizer:
             else:
                 print("❌ Error: All designs failed to produce valid FOM!")
                 results_sorted = []
-            
+
             # Check if best design meets user target
             best_design = results_sorted[0]
             meets_target = self._check_user_constraints(best_design)
             metrics_config = self.config.get("metric_post", {})
-            
+
             self.log(f"Top 3 designs (by {self.ranking_method.upper() if hasattr(self, 'ranking_method') else 'FOM'}):", "INFO")
             for i, r in enumerate(results_sorted[:3], 1):
                 values = r.results if hasattr(r, "results") else r.__dict__
-                
+
                 # Design parameters
                 params_list = []
                 for var in self.var_names:
@@ -2792,7 +2796,7 @@ class ControlledOTAOptimizer:
                     else:
                         params_list.append(f"{var}=NA")
                 params = " ".join(params_list)
-            
+
                 # Performance metrics (use YAML config for precision & units)
                 perf_parts = []
                 for m in self.config.get('metrics', []):
@@ -2805,9 +2809,9 @@ class ControlledOTAOptimizer:
                             perf_parts.append(f"{m}={val:.{decimals}f}{unit}")
                         except (ValueError, TypeError):
                             perf_parts.append(f"{m}=NA")
-                
+
                 perf = " ".join(perf_parts)
-                
+
                 # Calculate and add ranking tuple
                 if hasattr(self, 'ranking_method') and self.ranking_method == 'hybrid':
                     ranking_tuple = multi_objective_sort_key_hybrid(r, self.user_specs_metric)
@@ -2819,16 +2823,16 @@ class ControlledOTAOptimizer:
                 else:
                     fom_value = single_objective_sort_key_fom(r)
                     rank_str = f"rank={fom_value:.3f}"
-                
+
                 print(f"  {i}. {params} | {perf} {rank_str}")
-            
+
             if meets_target:
                 self.log(f"✓ Best design MEETS user specifications!", "INFO")
             else:
                 self.log(f"⚠ Best design does NOT yet meet all user specifications", "WARNING")
-            
+
             return results_sorted
-        
+
         return []
 
 
@@ -2842,27 +2846,27 @@ class ControlledOTAOptimizer:
           - Leave other params unchanged
         """
         import re
-    
+
         tmpl   = self.config["ota_subckt_template"]
         scales = {str(k).lower(): v for k, v in self.config.get("width_scales", {}).items()}
         params = {str(k).lower(): v for k, v in self.config.get("params", {}).items()}
-    
+
         def nm_to_e7(x):  # interpret nm and show as (value*10)e-7
             return f"{float(x) * 10:.6g}e-7"
-    
+
         def get_base(name):
             return best_design[name] if isinstance(best_design, dict) else getattr(best_design, name, None)
-    
+
         w_re   = re.compile(r'(\bW\s*=\s*)\{(W_[A-Za-z0-9_]+)\}', re.I)
         l_re   = re.compile(r'(\bL\s*=\s*)\{(' + re.escape(length_param_name) + r')\}', re.I)
         tx_re  = re.compile(r'^\s*x[mn]\w*\b', re.I)
         nf_re  = re.compile(r'\bnf\s*=\s*\d+', re.I)
-    
+
         out = []
         for raw in tmpl.splitlines():
             line = raw
             nf_val = 1
-    
+
             # --- Handle W={W_xxx}
             def sub_w(m):
                 prefix, key = m.group(1), m.group(2).lower()
@@ -2875,33 +2879,33 @@ class ControlledOTAOptimizer:
                     width_nm = float(base_val or 0.0)
                     nonlocal_nf[0] = int(factor)
                 return f"{prefix}{nm_to_e7(width_nm)}"
-    
+
             nonlocal_nf = [1]
             line = w_re.sub(sub_w, line)
             nf_val = nonlocal_nf[0]
-    
+
             # --- Handle L={L}
             if length_param_name.lower() in params:
                 line = l_re.sub(lambda m: f"{m.group(1)}{nm_to_e7(float(params[length_param_name.lower()] or 0))}", line)
-    
+
             # --- Add nf if transistor and missing
             if tx_re.match(line) and not nf_re.search(line) and nf_val > 1:
                 line = line.rstrip() + f" nf={nf_val}"
-    
+
             out.append(line)
-    
+
         text = "\n".join(out) + "\n"
         text = re.sub(r'e-0(\d)', r'e-\1', text)  # cosmetic
-    
+
         leftovers = re.findall(r'\{[^}]+\}', text)
         if leftovers:
             raise ValueError("Unresolved placeholders: " + ", ".join(sorted(set(leftovers))))
-    
+
         Path(spice_file).write_text(text)
         self.log(f"Saved SPICE netlist: {spice_file}")
 
-    
-    
+
+
     # def save_spice_for_align(self, best_design, spice_file: Path, length_param_name: str = "L"):
     #     """
     #     Create an ALIGN-friendly subckt:
@@ -2910,33 +2914,33 @@ class ControlledOTAOptimizer:
     #       - Add nf=<scale> for each transistor
     #     """
 
-    
+
     #     subckt_tmpl: str = self.config["ota_subckt_template"]
     #     scales: Mapping = self.config["width_scales"]
     #     variable: Mapping = self.config.get("variable", {})
     #     params: Mapping = self.config.get("params", {})
     #     var_names = list(self.config['variable'].keys())
-    
+
     #     #base_vals = {k: best_design.results[k] for k in var_names if k in best_design.results}
     #     base_vals = best_design
     #     lut = {fn: (bn, factor) for fn, (bn, factor) in scales.items()}
-    
+
     #     L_param = params.get(length_param_name, None)
     #     L_numeric = float(L_param) if L_param is not None else None
-    
+
     #     w_pat = re.compile(r'(\bW\s*=\s*)\{(W_[A-Za-z0-9_]+)\}', flags=re.IGNORECASE)
     #     l_pat = re.compile(r'(\bL\s*=\s*)\{(' + re.escape(length_param_name) + r')\}', flags=re.IGNORECASE)
     #     tx_line_pat = re.compile(r'^\s*x[mn]\w*\b', flags=re.IGNORECASE)
     #     nf_present_pat = re.compile(r'\bnf\s*=\s*\d+', flags=re.IGNORECASE)
-    
+
     #     def nm_to_e7(value_nm: float) -> str:
     #         """Convert nm to '(value*10)e-7' string form."""
     #         return f"{value_nm * 10:.6g}e-7"
-    
+
     #     out_lines = []
     #     for line in subckt_tmpl.splitlines():
     #         new_line = line
-    
+
     #         # Replace W={W_xxx}
     #         def _sub_w(m):
     #             prefix, final_w = m.group(1), m.group(2)
@@ -2947,18 +2951,18 @@ class ControlledOTAOptimizer:
     #                 val_nm = base_vals[base_name]  # still in nm
     #                 return f"{prefix}{nm_to_e7(val_nm)}"
     #             return m.group(0)
-    
+
     #         new_line = w_pat.sub(_sub_w, new_line)
-    
+
     #         # Replace L={L}
     #         def _sub_l(m):
     #             prefix = m.group(1)
     #             if L_numeric is None:
     #                 return m.group(0)
     #             return f"{prefix}{nm_to_e7(L_numeric)}"
-    
+
     #         new_line = l_pat.sub(_sub_l, new_line)
-    
+
     #         # Add nf=<scale> if missing
     #         if tx_line_pat.match(new_line) and not nf_present_pat.search(new_line):
     #             nf = 1
@@ -2967,44 +2971,44 @@ class ControlledOTAOptimizer:
     #                     nf = factor
     #                     break
     #             new_line = new_line.rstrip() + f" nf={nf}"
-    
+
     #         out_lines.append(new_line)
-    
+
     #     align_text = "\n".join(out_lines) + "\n"
-    
+
     #     # Normalize exponent: ensure e-07 -> e-7
     #     align_text = re.sub(r'e-0(\d)', r'e-\1', align_text)
-    
+
     #     Path(spice_file).write_text(align_text)
     #     self.log(f"Saved SPICE netlist: {spice_file}")
-    
+
     def run_align(self, spice_file: Path, iteration: int):
-        
+
 
         """Run ALIGN to generate GDS layout"""
         print(f"RUNNING ALIGN FOR ITERATION {iteration}", "SECTION")
-        
+
         pdk_path = self.config['align_pdk_path']
         results_dir =  Path(self.config["results_dir"])
         output_dir = results_dir / f"iteration_{iteration:02d}_align"
         output_dir.mkdir(parents=True, exist_ok=True)
-        
+
         design_dir = output_dir / "design"
         design_dir.mkdir(exist_ok=True)
-        
+
         # Copy netlist
         temp_netlist = design_dir / f"{self.config.get('subckt_name')}.sp"
         shutil.copy2(spice_file, temp_netlist)
-        
+
         original_cwd = os.getcwd()
-        
+
         try:
             os.chdir(output_dir)
             design_dir_relative = design_dir.relative_to(output_dir)
             align_cmd = f"schematic2layout.py {design_dir_relative} -p {pdk_path}"
-            
+
             self.log(f"Command: {align_cmd}")
-            
+
             result = subprocess.run(
                 align_cmd,
                 shell=True,
@@ -3012,9 +3016,9 @@ class ControlledOTAOptimizer:
                 text=True,
                 timeout=300
             )
-            
+
             os.chdir(original_cwd)
-            
+
             # Save log
             log_file = output_dir / 'align.log'
             with open(log_file, 'w') as f:
@@ -3024,10 +3028,10 @@ class ControlledOTAOptimizer:
                 if result.stderr:
                     f.write("\n" + "="*80 + "\n")
                     f.write(result.stderr)
-            
+
             # Find GDS files (.python.gds)
             gds_files = list(output_dir.rglob("*.python.gds"))
-            
+
             if result.returncode == 0 and gds_files:
                 self.log(f"✓ ALIGN successful! Generated: {gds_files[0].name}", "INFO")
                 return gds_files[0]
@@ -3035,29 +3039,29 @@ class ControlledOTAOptimizer:
                 self.log("✗ ALIGN failed or no GDS generated", "ERROR")
                 self.log(f"Check log: {log_file}", "ERROR")
                 return None
-                
+
         except Exception as e:
             os.chdir(original_cwd)
             self.log(f"✗ ALIGN error: {e}", "ERROR")
             return None
-    
+
     def run_pex(self, gds_path: Path, iteration: int):
-    
+
         """Run Magic PEX for parasitic extraction"""
         self.log(f"RUNNING PEX FOR ITERATION {iteration}", "SECTION")
-        
+
         pex_script = self.config['pex_script_path']
         results_dir = Path(self.config['results_dir'])
         output_dir = results_dir / f"iteration_{iteration:02d}_pex/"
         output_dir.mkdir(parents=True, exist_ok=True)
-        
+
         pex_netlist = output_dir / "pex_output.spice"
-        
+
         # Convert all paths to absolute paths
         gds_path_abs = gds_path.absolute()
         output_dir_abs = output_dir.absolute()
         pex_netlist_abs = pex_netlist.absolute()
-        
+
         cmd = [
             'python', pex_script,
             '-g', str(gds_path_abs),
@@ -3065,15 +3069,15 @@ class ControlledOTAOptimizer:
             '-o', str(pex_netlist_abs),
             '-d', str(output_dir_abs)+"/"
         ]
-        
+
         try:
             self.log(f"GDS: {gds_path_abs}")
             self.log(f"Output: {pex_netlist_abs}")
             self.log(f"Command: {' '.join(cmd)}")
-            
+
             # Run from the directory containing the PEX script
             pex_script_dir = Path(pex_script).parent
-            
+
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -3081,7 +3085,7 @@ class ControlledOTAOptimizer:
                 timeout=300,
                 cwd=str(pex_script_dir)  # Run from PEX script directory
             )
-            
+
             # Save log
             log_file = output_dir / 'pex.log'
             with open(log_file, 'w') as f:
@@ -3092,7 +3096,7 @@ class ControlledOTAOptimizer:
                 if result.stderr:
                     f.write("\n" + "="*80 + "\n")
                     f.write(result.stderr)
-            
+
             # Check if output file was created
             if pex_netlist_abs.exists():
                 file_size = pex_netlist_abs.stat().st_size
@@ -3101,16 +3105,16 @@ class ControlledOTAOptimizer:
             else:
                 print("✗ PEX failed - output file not created", "ERROR")
                 print(f"Check log: {log_file.absolute()}", "ERROR")
-                
+
                 # Print relevant error messages
                 if "Error" in result.stdout or "Error" in result.stderr:
                     self.log("Key errors found:", "ERROR")
                     for line in (result.stdout + result.stderr).split('\n'):
                         if 'Error' in line or 'FAILED' in line:
                             print(f"  {line}")
-                
+
                 return None
-                
+
         except Exception as e:
             self.log(f"✗ PEX error: {e}", "ERROR")
             return None
@@ -3124,45 +3128,45 @@ class ControlledOTAOptimizer:
 
         if post is None:
             return {}
-        
+
         degradations = {}
         metrics = self.config.get("metrics", [])  # from YAML
-    
+
         pre_results = pre.results
         post_results = post.results
-    
+
         for metric in metrics:
             if metric in pre_results and metric in post_results:
                 pre_val = pre_results[metric]
                 post_val = post_results[metric]
-    
+
                 # Only handle valid numeric entries
                 if isinstance(pre_val, (int, float)) and isinstance(post_val, (int, float)) and pre_val != 0:
                     degradations[f"{metric}_percent"] = ((post_val - pre_val) / pre_val) * 100
-    
+
         return degradations
-     
+
     def extract_area_from_gds(self, gds_path):
         """Extract area from GDS layout using gdspy or klayout"""
         import gdspy
-        
+
         try:
             # Read GDS file
             gdsii = gdspy.GdsLibrary()
             gdsii.read_gds(str(gds_path))
             print(str(gds_path))
-            
+
             # Get top cell
             top_cell = gdsii.top_level()[0]
-            
+
             # Get bounding box
             bbox = top_cell.get_bounding_box()
-            
+
             if bbox is not None:
                 width = bbox[1][0] - bbox[0][0]  # µm
                 height = bbox[1][1] - bbox[0][1]  # µm
                 area = width * height  # µm²
-                
+
                 return {
                     'width': width,
                     'height': height,
@@ -3171,14 +3175,14 @@ class ControlledOTAOptimizer:
         except Exception as e:
             print(f"Error extracting area: {e}")
             return None
-        
-    
+
+
     def run_iteration(self, iteration: int, n_samples: int, trial_index: int,
                       search_method='random', previous_best=None, algorithm_params: dict = None,
                       pre_layout_only: bool = False):
         """
         Run one complete iteration
-        
+
         Parameters:
         -----------
         iteration: int
@@ -3197,55 +3201,55 @@ class ControlledOTAOptimizer:
 
         if self.start_time is None:
             self.start_time = time.time()
-        
+
         iter_start = time.time()
 
-        
+
         self.log(f"ITERATION {iteration}", "SECTION")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         var_names = list(self.config['variable'].keys())
-    
+
         if algorithm_params:
             print(f"\n🔧 Algorithm parameters for iteration {iteration}:")
             for param_name, param_value in algorithm_params.items():
                 print(f"   - {param_name}: {param_value}")
         else:
             print(f"\n⚠️ No custom parameters (using defaults)")
-        
+
         # Show mode
         if pre_layout_only:
             print(f" Mode: PRE-LAYOUT ONLY (skipping ALIGN and post-PEX)")
         else:
             print(f" Mode: FULL FLOW (including ALIGN and post-PEX)")
-        
+
         # Step 1: Search N designs (ALWAYS RUN)
         self.log(f"STEP 1: SEARCHING {n_samples} DESIGNS", "SECTION")
         if algorithm_params is None:
             algorithm_params = {}
-        
+
         results = self.search_designs(
             n_samples=n_samples,
             method=search_method,
             previous_best=previous_best,
             algorithm_params=algorithm_params
         )
-        
+
         if not results:
             self.log("No valid designs found!", "ERROR")
             return None
-        
+
         best_design = results[0]
         best_design_var = {k: best_design.results[k] for k in var_names if k in best_design.results}
-        
+
         self.log(f"\nBest design found: {best_design}", "INFO")
-        
+
         # ========================================================================
         # CONDITIONAL: LAYOUT AND POST-PEX (based on pre_layout_only flag)
         # ========================================================================
         if pre_layout_only:
             # Skip ALIGN and post-PEX - return early with just pre-layout
             self.log(f"\n⚡ PRE-LAYOUT ONLY MODE: Skipping ALIGN and post-PEX", "INFO")
-            
+
             # Create iteration result with only pre-layout data
             iter_result = IterationResult(
                 iteration=iteration,
@@ -3258,30 +3262,30 @@ class ControlledOTAOptimizer:
                 timestamp=timestamp,
                 method=search_method
             )
-            
+
             self.iteration_history.append(iter_result)
             self.save_summary(trial_index=trial_index)
 
             iter_end = time.time()
             iter_elapsed = iter_end - iter_start
             self.iteration_times.append(iter_elapsed)
-            
+
             # Add time to iter_result
             iter_result.elapsed_time = iter_elapsed
             iter_result.cumulative_time = time.time() - self.start_time
-        
-            
+
+
             return iter_result
-        
+
         # ========================================================================
         # FULL FLOW: ALIGN + POST-PEX
         # ========================================================================
-        
+
         # Step 2: Save and run ALIGN
         self.log(f"STEP 2: GENERATING LAYOUT WITH ALIGN", "SECTION")
         spice_file = self.results_dir / f"iteration_{iteration:02d}_ota.sp"
         self.save_spice_for_align(best_design_var, spice_file)
-        
+
         gds_path = self.run_align(spice_file, iteration)
         if not gds_path:
             self.log("ALIGN failed - stopping iteration", "ERROR")
@@ -3299,22 +3303,22 @@ class ControlledOTAOptimizer:
             )
             self.iteration_history.append(iter_result)
             return iter_result
-        
+
         gds_path = gds_path.absolute()
-        
+
         # Extract area from GDS
         area_info = self.extract_area_from_gds(gds_path)
         if area_info:
-            best_design.area = round(area_info['area'] * 1e12, 1) 
+            best_design.area = round(area_info['area'] * 1e12, 1)
             best_design.calculate_fom_per_area()
-            
+
             self.log(f"Layout Area: {area_info['area']:.2e} × 1e12 = {area_info['area']*1e12:.1f} µm²", "INFO")
             self.log(f"  Width: {area_info['width']:.2e} × 1e6 = {area_info['width']*1e6:.1f} µm", "INFO")
             self.log(f"  Height: {area_info['height']:.2e} × 1e6 = {area_info['height']*1e6:.1f} µm", "INFO")
             self.log(f"FOM per Area: {(best_design.fom_per_area or 0):.4f}", "INFO")
         else:
             self.log("Could not extract area from GDS - continuing without area metrics", "WARNING")
-        
+
         # Step 3: Run PEX
         self.log(f"STEP 3: EXTRACTING PARASITICS WITH PEX", "SECTION")
         pex_netlist = self.run_pex(gds_path, iteration)
@@ -3334,7 +3338,7 @@ class ControlledOTAOptimizer:
             )
             self.iteration_history.append(iter_result)
             return iter_result
-        
+
         # Step 4: Re-simulate with PEX
         self.log(f"STEP 4: RE-SIMULATING WITH PARASITICS", "SECTION")
         best_trial_values = [best_design.results[v] for v in var_names]
@@ -3342,7 +3346,7 @@ class ControlledOTAOptimizer:
             trial_values=best_trial_values,
             netlist_path=pex_netlist
         )
-        
+
         if not post_pex_result:
             self.log("✗ Post-PEX simulation failed", "ERROR")
             degradation = {}
@@ -3351,28 +3355,28 @@ class ControlledOTAOptimizer:
             if best_design.area:
                 post_pex_result.area = best_design.area
                 post_pex_result.calculate_fom_per_area()
-            
+
             degradation = self.calculate_degradation(best_design, post_pex_result)
             self.log(f"✓ Post-PEX performance:", "INFO")
             print(f"     {post_pex_result}")
-            
+
             self.log(f"\nDegradation due to parasitics:", "INFO")
             # Automatically print all degradation metrics
             for key, value in degradation.items():
                 # Format key for readability
                 label = key.replace("_percent", "").replace("_", " ").title()
                 print(f"     {label}: {value:+.1f}%")
-            
+
             # Highlight target metric from user query
             target_metric = self.llm_agent.target_metric
 
-            
+
             if target_metric['is_composite']:
                 # Compute composite metric values
                 pre_value = self.llm_agent._compute_composite_metric(best_design.to_dict(), target_metric)
                 post_value = self.llm_agent._compute_composite_metric(post_pex_result.to_dict(), target_metric)
                 degradation_pct = ((post_value - pre_value) / pre_value * 100) if pre_value != 0 else 0
-                
+
                 self.log(f"\n⭐ PRIMARY METRIC ({target_metric['metric_name']}): {degradation_pct:+.1f}% change", "INFO")
                 print(f"     Pre-layout: {pre_value:.3f}")
                 print(f"     Post-PEX:   {post_value:.3f}")
@@ -3381,21 +3385,21 @@ class ControlledOTAOptimizer:
                 if degradation_key in degradation:
                     deg_value = degradation[degradation_key]
                     self.log(f"\n⭐ PRIMARY METRIC ({target_metric['metric_name']}): {deg_value:+.1f}% degradation", "INFO")
-                    
+
                     metric_key = target_metric['metric_key']
                     pre_value = getattr(best_design, metric_key, 'N/A')
                     post_value = getattr(post_pex_result, metric_key, 'N/A')
                     unit = target_metric['metric_unit']
                     fmt = target_metric['metric_format']
-                    
+
                     print(f"     Pre-layout: {pre_value:{fmt}} {unit}")
                     print(f"     Post-PEX:   {post_value:{fmt}} {unit}")
-            
+
             # Check if meets user specs
             meets_specs = self._check_user_constraints(post_pex_result)
             if meets_specs:
                 self.log(f"✓ Post-PEX design MEETS user specifications!", "INFO")
-        
+
         # Store results with full flow data
         iter_result = IterationResult(
             iteration=iteration,
@@ -3408,26 +3412,26 @@ class ControlledOTAOptimizer:
             timestamp=timestamp,
             method=search_method
         )
-        
+
         self.iteration_history.append(iter_result)
         self.save_summary(trial_index=trial_index)
 
         iter_end = time.time()
         iter_elapsed = iter_end - iter_start
         self.iteration_times.append(iter_elapsed)
-            
+
         # Add time to iter_result
         iter_result.elapsed_time = iter_elapsed
         iter_result.cumulative_time = time.time() - self.start_time
-        
-        
+
+
         return iter_result
 
-    
+
     def save_summary(self, trial_index: int = 0):
         """
         Save optimization summary with all designs from each iteration
-        
+
         Parameters:
         -----------
         trial_index: int
@@ -3435,7 +3439,7 @@ class ControlledOTAOptimizer:
         """
         # Save individual trial summary
         summary_file = self.results_dir / f"optimization_summary_trial_{trial_index}.json"
-        
+
         # Get target metric info
         target_metric = self.llm_agent.target_metric
 
@@ -3447,50 +3451,39 @@ class ControlledOTAOptimizer:
                 total_time = trial_summary['total_time_seconds']
         else:
             # Fallback: calculate from iteration times
-            total_time = sum(getattr(iter_result, 'elapsed_time', 0) 
+            total_time = sum(getattr(iter_result, 'elapsed_time', 0)
                             for iter_result in self.iteration_history)
-        
+
         # Calculate metrics for this trial
         best_fom = None
         evals_to_best = 0
         total_time = 0
         success = False
-        
+
         # Track cumulative evaluations and find best
         cumulative_evals = 0
         start_time = None
         time_to_best = 0
-        
-        for iter_result in self.iteration_history:
-            cumulative_evals += iter_result.num_designs_searched
-            
-            # Get iteration timestamp
-            if start_time is None:
-                start_time = datetime.strptime(iter_result.timestamp, "%Y%m%d_%H%M%S")
-            
-            current_time = datetime.strptime(iter_result.timestamp, "%Y%m%d_%H%M%S")
-            elapsed = (current_time - start_time).total_seconds()
-            
-            # Get FOM from post-PEX if available, otherwise pre-layout
-            if iter_result.post_pex:
-                current_fom = iter_result.post_pex.fom
-            else:
-                current_fom = iter_result.pre_layout.fom
-            
-            # Track best
-            if best_fom is None or current_fom > best_fom:
-                best_fom = current_fom
-                evals_to_best = cumulative_evals
-                time_to_best = iter_result.cumulative_time
-            
-        
-        # Check success (did we meet user specs with best design?)
-        final_result = self.iteration_history[-1]
-        if final_result.post_pex:
-            success = self._check_user_constraints(final_result.post_pex)
-        else:
-            success = self._check_user_constraints(final_result.pre_layout)
-        
+        best_feasible_found = False
+
+        # Scan ALL designs (not just iteration bests) to find best feasible FOM
+        for eval_idx, design in enumerate(self.all_searched_designs):
+            current_fom = design.fom
+            specs_met = self._check_user_constraints(design)
+
+            # Priority 1: feasible design with higher FOM
+            if specs_met:
+                success = True  # at least one feasible design exists
+                if not best_feasible_found or current_fom > best_fom:
+                    best_fom = current_fom
+                    evals_to_best = eval_idx + 1  # 1-indexed
+                    best_feasible_found = True
+            # Fallback: if no feasible design found yet, track raw best
+            elif not best_feasible_found:
+                if best_fom is None or current_fom > best_fom:
+                    best_fom = current_fom
+                    evals_to_best = eval_idx + 1
+
         summary = {
             'trial_index': trial_index,
             'user_specs': self.user_specs,
@@ -3503,7 +3496,7 @@ class ControlledOTAOptimizer:
             },
             'config': self.config,
             'total_designs_searched': len(self.all_searched_designs),
-            
+
             # Summary metrics for this trial
             'metrics': {
                 'best_fom': best_fom,
@@ -3514,13 +3507,13 @@ class ControlledOTAOptimizer:
                 'num_iterations': len(self.iteration_history),
                 'total_evaluations': cumulative_evals
             },
-            
+
             'iterations': []
         }
-        
+
         # Track which designs belong to which iteration
         design_idx = 0
-        
+
         for iter_result in self.iteration_history:
             # Get all designs for this iteration
             iteration_designs = []
@@ -3528,17 +3521,17 @@ class ControlledOTAOptimizer:
                 if design_idx < len(self.all_searched_designs):
                     design = self.all_searched_designs[design_idx]
                     design_dict = {'design_number': i + 1, **design.to_dict()}
-                    
+
                     # Add target metric value
                     if target_metric['is_composite']:
                         design_dict['target_metric_value'] = self.llm_agent._compute_composite_metric(
                             design.to_dict(), target_metric)
                     else:
                         design_dict['target_metric_value'] = design.to_dict().get(target_metric['metric_key'])
-                    
+
                     iteration_designs.append(design_dict)
                     design_idx += 1
-            
+
             iter_data = {
                 'iteration': iter_result.iteration,
                 'timestamp': iter_result.timestamp,
@@ -3549,33 +3542,33 @@ class ControlledOTAOptimizer:
                 'gds_path': str(iter_result.gds_path) if iter_result.gds_path else None,
                 'pex_netlist_path': str(iter_result.pex_netlist_path) if iter_result.pex_netlist_path else None,
             }
-            
+
             # Add target metric values for best designs
             if target_metric['is_composite']:
                 iter_data['best_pre_target_metric'] = self.llm_agent._compute_composite_metric(
                     iter_result.pre_layout.to_dict(), target_metric)
             else:
                 iter_data['best_pre_target_metric'] = iter_result.pre_layout.to_dict().get(target_metric['metric_key'])
-            
+
             if iter_result.post_pex:
                 iter_data['best_design_post_pex'] = iter_result.post_pex.to_dict()
                 iter_data['degradation'] = iter_result.degradation_percent
-                
+
                 if target_metric['is_composite']:
                     iter_data['best_post_target_metric'] = self.llm_agent._compute_composite_metric(
                         iter_result.post_pex.to_dict(), target_metric)
                 else:
                     iter_data['best_post_target_metric'] = iter_result.post_pex.to_dict().get(target_metric['metric_key'])
-            
+
             summary['iterations'].append(iter_data)
-        
+
         with open(summary_file, 'w') as f:
             json.dump(summary, f, indent=2)
-        
+
         self.log(f"Summary saved to: {summary_file}", "INFO")
-        
+
         return summary['metrics']  # Return metrics for aggregation
-    
+
     def print_summary(self):
         """Print summary of all iterations"""
         print("\n" + "="*100)
@@ -3583,19 +3576,19 @@ class ControlledOTAOptimizer:
         print("="*100)
         print(f"Total designs searched across all iterations: {len(self.all_searched_designs)}")
         print(f"Number of iterations completed: {len(self.iteration_history)}")
-        
+
         # Extract target metric from user specs
         target_metric = self.llm_agent.target_metric
-        
+
         for iter_result in self.iteration_history:
             print(f"\n{'─'*100}")
             print(f"Iteration {iter_result.iteration} ({iter_result.num_designs_searched} designs searched)")
             print(f"{'─'*100}")
             print(f"  Pre-layout:  {iter_result.pre_layout}")
-            
+
             if iter_result.post_pex:
                 print(f"  Post-PEX:    {iter_result.post_pex}")
-                
+
                 # Show target metric degradation
                 if target_metric['is_composite']:
                     pre_value = self.llm_agent._compute_composite_metric(
@@ -3609,8 +3602,8 @@ class ControlledOTAOptimizer:
                     if deg_key in iter_result.degradation_percent:
                         print(f"  Target Metric ({target_metric['metric_name']}): "
                               f"{iter_result.degradation_percent[deg_key]:+.1f}%")
-            
+
             if iter_result.gds_path:
                 print(f"  GDS: {iter_result.gds_path}")
-        
+
         print("="*100)

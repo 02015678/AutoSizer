@@ -371,12 +371,16 @@ The LLM also decides when to **stop** the inner loop (< 2 % improvement over two
 
 ## FoM Definition
 
-The figure of merit normalizes all performance metrics against their specification targets so that circuits with different performance scales are directly comparable:
+AutoSizer uses two distinct FOM values for different parts of the optimization loop.
+
+### Display FOM (stored & reported)
+
+The display FOM normalizes metrics against their specification targets so that circuits with different performance scales are directly comparable:
 
 ```
-FoM = ∏(yᵢ / yᵢ_spec) for maximize metrics
-      ─────────────────────────────────────
-      ∏(yⱼ / yⱼ_spec) for minimize metrics
+display_FoM = ∏(yᵢ / yᵢ_spec) for maximize metrics
+              ─────────────────────────────────────
+              ∏(yⱼ / yⱼ_spec) for minimize metrics
 ```
 
 where `yᵢ_spec` is the target threshold from `user_specs_metric`. A design is **feasible** when every constraint is satisfied.
@@ -387,7 +391,37 @@ AutoSizer auto-generates this expression from the `user_specs_metric` field. For
 user_specs_metric: "fom > 0.100 AND dc_gain_db > 55 AND ugbw > 10 AND power_dc < 50"
 ```
 
-produces: `FoM = (dc_gain_db / 55) × (ugbw / 10) / (power_dc / 50)`.
+produces: `display_FoM = (dc_gain_db / 55) × (ugbw / 10) / (power_dc / 50)`.
+
+This value is stored in `results['fom']`, used for reporting in the optimization summary, and fed to the LLM agent for convergence analysis.
+
+### Optuna TPE FOM (optimizer target)
+
+The TPE Bayesian optimizer receives a **penalized** version of the FOM that accounts for constraint violations, following the INSIGHT paper formulation (arXiv 2407.07346, Section 2.3):
+
+```
+TPE_FoM = display_FoM - Σᵢ min(1, max(0, fᵢ(x)))
+```
+
+where `fᵢ(x)` is a normalized violation function for each hard constraint (positive when violated, zero when satisfied):
+
+| Constraint | fᵢ(x) | Example |
+|---|---|---|
+| `dc_gain_db > 55` | `(55 − actual) / 55` | actual=60 → fᵢ=−0.09 (penalty=0) |
+| `power_dc < 50` | `(actual − 50) / 50` | actual=70 → fᵢ=0.40 (penalty=0.40) |
+
+**Why two FOMs?** The display FOM preserves a "clean" view of raw circuit performance for human reading and LLM analysis. The penalized TPE FOM steers the optimizer away from infeasible regions — designs with violated specs receive a lower score, so the TPE sampler naturally prioritizes feasible areas of the search space.
+
+**Behavior of the penalty:**
+
+| Scenario | Penalty | TPE FOM vs Display FOM |
+|---|---|---|
+| All constraints met | 0.0 | Equal — pure optimization of the display FOM |
+| One constraint mildly violated (e.g., gain 50 vs 55 target) | ~0.09 | Slightly lower — still explored if the reward is high |
+| One constraint severely violated (>100% off) | 1.0 (capped) | Significantly lower |
+| Multiple violated | Sum per constraint, each capped at 1 | Strongly deprioritized |
+
+The penalty is computed in `_get_constraint_penalty()` and applied in `_calculate_objective_value()` (`advanced_search_methods.py`). Only the Optuna objective value is affected; the stored `results['fom']` and all LLM-facing metrics remain unchanged.
 
 ---
 

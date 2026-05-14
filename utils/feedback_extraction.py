@@ -233,8 +233,26 @@ def prepare_format_params(feedback_dict, current_config, netlist, original_confi
         all_designs = []
         for iter_data in iteration_history:
             all_designs.extend(iter_data.get('top_designs', []))
-        all_designs.sort(key=lambda x: x['fom'], reverse=True)
-        
+        # Hybrid sort: feasible designs first, then by FOM
+        user_specs_str = current_config.get('user_specs_metric', '') if current_config else ''
+        if user_specs_str:
+            import re
+            constraints = re.findall(r'(\w+)\s*([<>=]+)\s*([\d.e+-]+)', user_specs_str)
+            def _hybrid_sort_key(d):
+                for m, op, t_str in constraints:
+                    if m.lower() == 'fom':
+                        continue
+                    actual = d.get(m)
+                    if actual is None:
+                        continue
+                    target = float(t_str)
+                    if (op == '>' and not (actual > target)) or (op == '<' and not (actual < target)):
+                        return (0, d.get('fom', 0))
+                return (1, d.get('fom', 0))
+            all_designs.sort(key=_hybrid_sort_key, reverse=True)
+        else:
+            all_designs.sort(key=lambda x: x['fom'], reverse=True)
+
         for i, design in enumerate(all_designs[:10], 1):
             params_str = ", ".join([f"{k}={v}" for k, v in design['parameters'].items()])
             top_designs_section += f"\n{i}. FOM={design['fom']:.4f} → {params_str}"
@@ -1175,7 +1193,7 @@ def save_feedback_json(feedback: Dict, output_path: str):
 #     return all_met
 
 
-def check_user_specs_met(design_dict: dict, user_specs: str, verbose: bool = False, fom_only_check: bool = True) -> bool:
+def check_user_specs_met(design_dict: dict, user_specs: str, verbose: bool = False, fom_only_check: bool = False) -> bool:
     import re
     
     if not user_specs:

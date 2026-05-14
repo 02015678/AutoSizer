@@ -112,12 +112,12 @@ You have access to state-of-the-art optimization algorithms. Analyze the current
 - **Sample size**: 15-30 (adjust based on dimensionality of the design space)
 - **Strategy type**: Pure exploration
 
-**2. 'genetic' (Genetic Algorithm)**
+**2. 'genetic' (Genetic Algorithm)** ⚠️ TEMPORARILY DISABLED
 - **Strength**: Evolves toward good regions, robust to local optima, finds multiple solutions
 - **Best when**: Want to combine exploration + evolution, searching for diverse good designs
 - **Weakness**: Needs many samples, computationally expensive
 - **Sample size**: 20-30 (can reduce to 15-20 in later iterations)
-- **Strategy type**: Evolutionary exploration
+- **Strategy type**: Evolutionary exploration (DISABLED — constraint-blind FOM sort path)
 
 **3. 'bayesian' (Bayesian Optimization)**
 - **Strength**: MOST sample-efficient, learns from ALL previous data, intelligent sampling
@@ -140,12 +140,12 @@ You have access to state-of-the-art optimization algorithms. Analyze the current
 - **Sample size**: 15-25 (can be reduced as convergence approaches)
 - **Strategy type**: Balanced
 
-**6. 'annealing' (Simulated Annealing)**
+**6. 'annealing' (Simulated Annealing)** ⚠️ TEMPORARILY DISABLED
 - **Strength**: Can ESCAPE local optima by accepting worse solutions probabilistically
 - **Best when**: Stuck in plateau, suspect local optimum, need to explore distant regions
 - **Weakness**: May waste samples exploring bad regions
 - **Sample size**: 12-20 (adjust based on temperature schedule)
-- **Strategy type**: Escape + exploration
+- **Strategy type**: Escape + exploration (DISABLED — constraint-blind FOM fitness path)
 
 **7. 'multistart' (Multi-Start Local Search)**
 - **Strength**: Finds MULTIPLE local optima, provides alternative solutions
@@ -499,7 +499,8 @@ def response_format_section() -> str:
     }}
     ```
     
-    Where "method" is ONE of these: lhs, genetic, bayesian, adaptive, annealing, multistart
+    Where "method" is ONE of these: lhs, bayesian, optuna, adaptive, multistart
+    (genetic, annealing temporarily disabled)
     
     ### TEMPLATE 2: If you want to STOP optimizing (use "stop")
     ```json

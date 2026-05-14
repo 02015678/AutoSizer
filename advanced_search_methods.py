@@ -846,14 +846,14 @@ class AdvancedSearchMethods:
             point = []
             valid_point = True
             
-            for var in self.var_names:
+            for var in self.all_var_names:
                 # First check if variable exists in results dictionary
                 if hasattr(result, 'results') and var in result.results:
                     val = result.results[var]
                 else:
                     # Try attribute access as fallback
                     val = getattr(result, var, None)
-                
+
                 # Verify value is in W_reverse_map
                 if val in W_reverse_map:
                     point.append(W_reverse_map[val])
@@ -862,9 +862,9 @@ class AdvancedSearchMethods:
                     print(f"  Warning: Value {val} for {var} not in W_reverse_map")
                     valid_point = False
                     break
-            
+
             # Only add points with correct dimensions and valid indices
-            if valid_point and len(point) == len(self.var_names):
+            if valid_point and len(point) == len(self.all_var_names):
                 X.append(point)
                 
                 # Extract objective value
@@ -914,7 +914,7 @@ class AdvancedSearchMethods:
                 
                 y.append(objective)
             else:
-                print(f"  Skipping point with invalid dimensions or values (expected {len(self.var_names)}, got {len(point)})")
+                print(f"  Skipping point with invalid dimensions or values (expected {len(self.all_var_names)}, got {len(point)})")
         
         # Check if we have enough valid points to train a model
         if len(X) < 3:
@@ -983,7 +983,7 @@ class AdvancedSearchMethods:
             try:
                 next_x = opt.ask()
                 # Dynamically construct point based on actual dimension count
-                point = tuple(W_map[next_x[i]] for i in range(len(self.var_names)))
+                point = tuple(W_map[next_x[i]] for i in range(len(self.all_var_names)))
                 if point not in suggested_points:
                     suggested_points.append(point)
             except Exception as e:
@@ -1029,7 +1029,7 @@ class AdvancedSearchMethods:
                     try:
                         next_x = alt_opt.ask()
                         # Dynamically construct point based on actual dimension count
-                        point = tuple(W_map[next_x[i]] for i in range(len(self.var_names)))
+                        point = tuple(W_map[next_x[i]] for i in range(len(self.all_var_names)))
                         if point not in suggested_points:
                             suggested_points.append(point)
                     except Exception as e:
@@ -1341,7 +1341,7 @@ class AdvancedSearchMethods:
             # Check if unique
             if point not in suggested_points:
                 suggested_points.append(point)
-                study.tell(trial, values=[0.0])
+                # study.tell(trial, values=[0.0])  # constant_liar=True handles liar values internally with best-observed FOM
             else:
                 study.tell(trial, state=optuna.trial.TrialState.PRUNED)
         
@@ -1366,13 +1366,83 @@ class AdvancedSearchMethods:
         return suggested_points[:n_samples]    
     
             
-    def _calculate_objective_value(self, result, targets: List[str], 
+    def _get_constraint_penalty(self, result) -> float:
+        """
+        Compute FOM-scaled exponential-barrier constraint penalty.
+
+        penalty = |FOM| * SUM_i min(cap_ratio, max(0, exp(k * fi) - 1))
+
+        where fi is normalized violation in "positive when violated" form:
+          fi > 0  when constraint is violated
+          fi <= 0 when constraint is satisfied
+
+        The FOM scaling ensures the penalty competes with the objective magnitude
+        across all circuits. The exp barrier is gentle near zero (no harsh cliff
+        for sub-0.5% violations) but grows rapidly for medium violations.
+        """
+        k = 3.0          # exp steepness: at 0.5% violation → 1.5% FOM penalty
+        cap_ratio = 0.5  # per-constraint penalty cap at 50% of |FOM|
+
+        user_specs = self.config.get('user_specs_metric', '')
+        if not user_specs:
+            return 0.0
+
+        # Get design values dict and base FOM
+        if hasattr(result, 'to_dict'):
+            design_dict = result.to_dict()
+        elif hasattr(result, 'results'):
+            design_dict = result.results
+        else:
+            return 0.0
+
+        base_fom = design_dict.get('fom', 0) if isinstance(design_dict, dict) else 0
+        fom_mag = abs(base_fom) if base_fom else 1.0
+
+        from iterative_ota_optimization import parse_user_specs
+        constraints = parse_user_specs(user_specs)
+        total_penalty_ratio = 0.0
+
+        for c in constraints:
+            metric = c['metric']
+            if metric.lower() == 'fom':
+                continue  # FOM is the objective itself, not a constraint
+
+            target = c['target']
+            op = c['operator']
+            if isinstance(design_dict, dict):
+                actual = design_dict.get(metric)
+            else:
+                continue
+
+            if actual is None:
+                continue
+
+            # Normalized violation in "positive when violated" form
+            target_abs = abs(target)
+            if target_abs < 1e-12:
+                continue
+            if op == '>':
+                fi = (target - actual) / target_abs  # > 0 when actual < target (violated)
+            elif op == '<':
+                fi = (actual - target) / target_abs  # > 0 when actual > target (violated)
+            else:
+                continue
+
+            import math
+            total_penalty_ratio += min(cap_ratio, max(0.0, math.exp(k * fi) - 1.0))
+
+        return fom_mag * total_penalty_ratio
+
+    def _calculate_objective_value(self, result, targets: List[str],
                                weights: Dict[str, float] = None) -> float:
-        
+
         """
         Calculate objective value for a design result
         Returns value to MAXIMIZE (negate if needed)
         Returns None if calculation fails
+
+        Applies INSIGHT-style constraint penalty to the base objective:
+            penalized = base - SUM_i min(1, max(0, f_i(x)))
         """
         try:
             if 'composite' in targets:
@@ -1382,33 +1452,40 @@ class AdvancedSearchMethods:
                     )
                     if composite_value is None:
                         return None
-                    
+
                     direction = self.optimizer.llm_agent.target_metric.get('direction', 'maximize')
-                    return composite_value if direction == 'maximize' else -composite_value
+                    base_value = composite_value if direction == 'maximize' else -composite_value
+                    penalty = self._get_constraint_penalty(result)
+                    return base_value - penalty
                 except Exception as e:
                     print(f"  Warning: Error computing composite metric: {e}")
                     # Fall through to FOM
-            
+
             if len(targets) == 1:
                 target = targets[0]
                 if hasattr(result, target):
                     target_value = getattr(result, target)
                     if target_value is None:
                         return None
-                    # For power, we want to minimize, so negate
-                    return -target_value if target == 'power_uw' else target_value
+                    base_value = -target_value if target == 'power_uw' else target_value
                 elif hasattr(result, 'results') and target in result.results:
                     target_value = result.results[target]
                     if target_value is None:
                         return None
-                    return -target_value if target == 'power_uw' else target_value
+                    base_value = -target_value if target == 'power_uw' else target_value
                 else:
                     # Try FOM as fallback
                     if hasattr(result, 'fom'):
                         fom_val = getattr(result, 'fom')
-                        return fom_val if fom_val is not None else None
-                    return None
-            
+                        if fom_val is None:
+                            return None
+                        base_value = fom_val
+                    else:
+                        return None
+
+                penalty = self._get_constraint_penalty(result)
+                return base_value - penalty
+
             else:
                 # Multi-objective weighted combination
                 objective = 0.0
@@ -1418,15 +1495,16 @@ class AdvancedSearchMethods:
                         target_value = getattr(result, target)
                     elif hasattr(result, 'results') and target in result.results:
                         target_value = result.results[target]
-                    
+
                     if target_value is None:
                         return None  # If any target is None, return None
-                    
+
                     weight = weights.get(target, 1.0) if weights else 1.0
                     objective += -weight * target_value if target == 'power_uw' else weight * target_value
-                
-                return objective
-        
+
+                penalty = self._get_constraint_penalty(result)
+                return objective - penalty
+
         except Exception as e:
             print(f"  Warning: Error calculating objective value: {e}")
             return None
