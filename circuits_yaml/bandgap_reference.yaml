@@ -1,4 +1,4 @@
-pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+pdk_lib_path: "/Users/garrett/workspace/pdk/sky130/libraries/sky130_fd_pr/latest/models/sky130.lib.spice"
 pnp_model_path: "/path/to/skywater-pdk/cells/pnp_05v5/tests/sky130_fd_pr__pnp_05v5_W3p40L3p40__pnp.spice"
 align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
 pex_script_path: "./test_magic_pex.py"
@@ -62,8 +62,7 @@ metrics:
   - power_uw
   - line_regulation_percent
   - psrr_100hz_db
-  - fom
-
+  - fom_user
 base_metrics:
   vref:
     name: "Reference Voltage"
@@ -85,7 +84,7 @@ base_metrics:
     unit: "dB"
     format: ".1f"
     degradation_key: "psrr_percent"
-  fom:
+  fom_user:
     name: "FOM"
     unit: ""
     format: ".4f"
@@ -112,7 +111,7 @@ metric_post:
     scale: 1
     decimals: 1
     unit: "dB"
-  fom:
+  fom_user:
     # FOM = (PSRR × |Vref - 1.2|_inv) / (Power × TC × Line_Reg)
     # Better: closer to 1.2V, lower TC, higher PSRR, lower power, lower line reg
     expr: "(abs(psrr_100hz_db) * 100 / (1 + abs(vref - 0.75) * 10)) / (power_uw * max(line_regulation_percent, 0.001))"

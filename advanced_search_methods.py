@@ -91,7 +91,7 @@ class AdvancedSearchMethods:
         key_fn: callable
             Function to extract sort key from each result
             Example: lambda x: x.fom
-                     lambda x: self.calculate_fitness(x, targets, weights)
+                     lambda x: self._calculate_objective_value(x, targets, weights)
         reverse: bool
             If True, sort descending (maximize). If False, ascending (minimize)
         filter_none: bool
@@ -274,86 +274,7 @@ class AdvancedSearchMethods:
         return points
         
 
-    def calculate_fitness(self, result, targets, weights=None):
-        """
-        Calculate fitness score for a result based on targets and weights
-        
-        Parameters:
-        -----------
-        result: OTAResult
-            Design result to evaluate
-        targets: List[str]
-            List of optimization targets ('gain_db', 'power_uw', 'ugbw_mhz', 'fom', 'composite')
-        weights: Dict[str, float]
-            Optional weights for each target. If not provided, all targets have equal weight.
-        
-        Returns:
-        --------
-        float: Fitness score (higher is better)
-        """
-        # Default to FOM if no targets
-        if not targets:
-            targets = ['fom']
-            
-        # Special case for composite metric (like ratio)
-
-        if 'composite' in targets:
-            # Check if we have complete target_metric information
-            if (hasattr(self, 'target_metric') and 
-                    self.target_metric and 
-                    'numerator_keys' in self.target_metric and 
-                    'denominator_keys' in self.target_metric):
-                
-                formulation_type = self.target_metric.get('formulation_type', '')
-                
-                if formulation_type == 'ratio':
-                    numerator_keys = self.target_metric['numerator_keys']
-                    denominator_keys = self.target_metric['denominator_keys']
-                    
-                    # Calculate numerator (product of all numerator values)
-                    numerator = 1.0
-                    for key in numerator_keys:
-                        numerator *= getattr(result, key, 1.0)
-                    
-                    # Calculate denominator (product of all denominator values)
-                    denominator = 1.0
-                    for key in denominator_keys:
-                        denominator *= getattr(result, key, 1.0)
-                    
-                    # Return the ratio
-                    return numerator / (denominator + 1e-10)
-                
-        # If single target (that's not 'composite'), return that value directly
-        if len(targets) == 1:
-            target = targets[0]
-            val = getattr(result, target)
-            # For power, invert the value (since lower is better)
-            return 1.0/(val + 1e-10) if target == 'power_uw' else val
-        
-        # Multi-objective with weights
-        # If no weights provided, use equal weights
-        if not weights:
-            weights = {target: 1.0 for target in targets}
-        
-        # Normalize weights
-        total_weight = sum(weights.values())
-        norm_weights = {k: v/total_weight for k, v in weights.items()} if total_weight > 0 else weights
-        
-        # Calculate weighted score
-        score = 0.0
-        for target in targets:
-            if target in weights:
-                val = getattr(result, target)
-                # Handle special case for power (lower is better)
-                if target == 'power_uw':
-                    # Invert power so that lower values are better
-                    normalized_value = 1.0 / (val + 1e-10)  # Add small value to avoid division by zero
-                else:
-                    normalized_value = val
-                
-                score += norm_weights.get(target, 1.0) * normalized_value
-        
-        return score
+    # calculate_fitness removed — all algorithms now use _calculate_objective_value
     
     def _calculate_ratio(self, result, numerator_keys, denominator_keys):
         """Helper method to calculate ratio for any result object"""
@@ -385,34 +306,12 @@ class AdvancedSearchMethods:
         
         # Initialize population
         if previous_results and len(previous_results) >= population_size // 2:
-            # Sort by fitness based on targets/weights
-            if targets:
-                # ✅ Use centralized metric computation for composite targets
-                if 'composite' in targets:
-                    # Check if we have access to LLM agent
-                    if hasattr(self, 'optimizer') and hasattr(self.optimizer, 'llm_agent'):
-                        # Use centralized computation - handles ALL formulation types
-                        sorted_results = self._safe_sort_results(
-                            previous_results,
-                            key_fn =lambda x: self.optimizer.llm_agent._compute_composite_metric(
-                                x.to_dict(), self.optimizer.llm_agent.target_metric
-                            ),
-                            reverse=(self.optimizer.target_metric['direction'] == 'maximize')
-                        )
-                    else:
-                        # Fallback if no LLM agent (shouldn't happen in normal use)
-                        print("  Warning: No LLM agent found, using FOM fallback")
-                        sorted_results = sorted(previous_results, key=lambda x: x.fom, reverse=True)
-                else:
-                    # Non-composite: use calculate_fitness for single/multi-objective
-                    sorted_results = self._safe_sort_results(
-                        previous_results, 
-                        key_fn =lambda x: getattr(x, 'fom', None),  # ← Changed to use helper
-                        reverse=True
-                    )
-            else:
-                # Default to FOM if no targets specified
-                sorted_results = self._safe_sort_results(previous_results, key_fn =lambda x: x.fom, reverse=True)
+            # Sort by unified penalized objective
+            sorted_results = self._safe_sort_results(
+                previous_results,
+                key_fn=lambda x: self._calculate_objective_value(x, targets, weights),
+                reverse=True
+            )
             
             # Create initial population from top performers
             population = [
@@ -642,18 +541,9 @@ class AdvancedSearchMethods:
                 )
                 previous_points.append(point)
                 
-                # Calculate fitness based on targets
-                if targets and 'composite' in targets:
-                    if hasattr(self.optimizer, 'llm_agent'):
-                        fitness = self.optimizer.llm_agent._compute_composite_metric(
-                            result.to_dict(), self.optimizer.llm_agent.target_metric
-                        )
-                    else:
-                        fitness = result.fom
-                elif targets:
-                    fitness = self.calculate_fitness(result, targets, weights)
-                else:
-                    fitness = result.fom
+                fitness = self._calculate_objective_value(result, targets, weights)
+                if fitness is None:
+                    fitness = getattr(result, 'fom', 0) or 0
                 
                 previous_fitness.append(fitness)
             
@@ -867,51 +757,12 @@ class AdvancedSearchMethods:
             if valid_point and len(point) == len(self.all_var_names):
                 X.append(point)
                 
-                # Extract objective value
-                if 'composite' in targets:
-                    try:
-                        composite_value = self.optimizer.llm_agent._compute_composite_metric(
-                            result.to_dict(), self.optimizer.llm_agent.target_metric
-                        )
-                        direction = self.optimizer.llm_agent.target_metric.get('direction', 'maximize')
-                        objective = -composite_value if direction == 'maximize' else composite_value
-                    except Exception as e:
-                        print(f"  Warning: Error computing composite metric: {e}, using FOM")
-                        # Try to get FOM from results dictionary first
-                        if hasattr(result, 'results') and 'fom' in result.results:
-                            objective = -result.results['fom']
-                        else:
-                            objective = -getattr(result, 'fom', 0.0)
-                elif len(targets) == 1:
-                    target = targets[0]
-                    
-                    # First try accessing from results dictionary
-                    if hasattr(result, 'results') and target in result.results:
-                        target_value = result.results[target]
-                    # Fall back to direct attribute access
-                    elif hasattr(result, target):
-                        target_value = getattr(result, target)
-                    else:
-                        print(f"  Warning: Target '{target}' not found in result, using FOM")
-                        # Get FOM from results dictionary
-                        target_value = result.results.get('fom', 0.0) if hasattr(result, 'results') else 0.0
-                    
-                    objective = target_value if target == 'power_uw' else -target_value
-                else:
-                    objective = 0.0
-                    for target in targets:
-                        # Try both results dictionary and direct attribute access
-                        if hasattr(result, 'results') and target in result.results:
-                            value = result.results[target]
-                        elif hasattr(result, target):
-                            value = getattr(result, target)
-                        else:
-                            print(f"  Warning: Target '{target}' not found in result")
-                            continue
-                            
-                        weight = weights.get(target, 1.0) if weights else 1.0
-                        objective += weight * value if target == 'power_uw' else -weight * value
-                
+                # Use unified penalized objective (handles all target types + constraint penalty)
+                objective_value = self._calculate_objective_value(result, targets, weights)
+                if objective_value is None:
+                    objective_value = getattr(result, 'fom', 0) or 0
+                objective = -objective_value  # skopt minimizes; penalized objective is to maximize
+
                 y.append(objective)
             else:
                 print(f"  Skipping point with invalid dimensions or values (expected {len(self.all_var_names)}, got {len(point)})")
@@ -1716,14 +1567,10 @@ class AdvancedSearchMethods:
                 weight = 1.0 / (dist + 0.5)
                 total_weight += weight
                 
-                # ✅ Use centralized metric computation
-                if targets and 'composite' in targets:
-                    performance = self.optimizer.llm_agent._compute_composite_metric(
-                        result.to_dict(), self.optimizer.llm_agent.target_metric
-                    )
-                else:
-                    # Use regular calculate_fitness for non-composite
-                    performance = self.calculate_fitness(result, targets, weights)
+                # Use unified penalized objective
+                performance = self._calculate_objective_value(result, targets, weights)
+                if performance is None:
+                    performance = getattr(result, 'fom', 0) or 0
                 
                 weighted_performance += performance * weight
             
@@ -1805,21 +1652,12 @@ class AdvancedSearchMethods:
         # Get starting points
         if previous_results and len(previous_results) >= n_starts:
             # ✅ Use centralized metric computation for ALL formulation types
-            if targets and 'composite' in targets:
-                sorted_results = sorted(
-                    previous_results,
-                    key=lambda x: self.optimizer.llm_agent._compute_composite_metric(
-                        x.to_dict(), self.optimizer.llm_agent.target_metric
-                    ),
-                    reverse=(self.optimizer.target_metric['direction'] == 'maximize')
-                )
-            else:
-                # Single target or multi-objective with weights
-                sorted_results = self._safe_sort_results(
-                    previous_results, 
-                    key_fn =lambda x: self.calculate_fitness(x, targets, weights),
-                    reverse=True
-                )
+            # Sort by unified penalized objective
+            sorted_results = self._safe_sort_results(
+                previous_results,
+                key_fn=lambda x: self._calculate_objective_value(x, targets, weights),
+                reverse=True
+            )
     
             starts = [
                 tuple(getattr(r, var) for var in self.all_var_names)  # Use all_var_names

@@ -1,4 +1,4 @@
-pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+pdk_lib_path: "/Users/garrett/workspace/pdk/sky130/libraries/sky130_fd_pr/latest/models/sky130.lib.spice"
 align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
 pex_script_path: "./test_magic_pex.py"
 results_dir: "./diode_load_amp_test_folder/fom_test"
@@ -44,8 +44,7 @@ metrics:
   - bandwidth_mhz
   - power_uw
   - output_swing_v
-  - fom
-
+  - fom_user
 base_metrics:
   gain_db:
     name: "Voltage Gain"
@@ -67,7 +66,7 @@ base_metrics:
     unit: "V"
     format: ".4f"
     degradation_key: "swing_percent"
-  fom:
+  fom_user:
     name: "FOM"
     unit: ""
     format: ".4f"
@@ -90,7 +89,7 @@ metric_post:
     scale: 1
     decimals: 4
     unit: "V"
-  fom:
+  fom_user:
     # FOM = (Gain × Bandwidth × Output_Swing) / Power
     # Maximize: Gain, bandwidth, output swing
     # Minimize: Power

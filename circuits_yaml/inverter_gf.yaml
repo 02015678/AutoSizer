@@ -1,33 +1,33 @@
-pdk_lib_path: "/Users/garrett/workspace/pdk/sky130/libraries/sky130_fd_pr/latest/models/sky130.lib.spice"
-align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pdk_lib_path: "/Users/garrett/workspace/pdk/gf180mcu/libraries/gf180mcu_fd_pr/latest/models/ngspice/gf180mcu.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-gf180mcu/GF180MCU_PDK/"
 pex_script_path: "./test_magic_pex.py"
-results_dir: "./inverter_test_folder/fom_test_new"
+results_dir: "./inverter_gf_test_folder/fom_test_new"
 
 user_specs:  "Primary goal: Maximize DC gain while minimizing average delay and dynamic power consumption."
-user_specs_metric: "fom > 1.213 AND dc_gain_db > 30 AND average_delay < 50 AND dynamic_power < 30"
+user_specs_metric: "fom > 1.1 AND dc_gain_db > 20 AND average_delay < 80 AND dynamic_power < 80"
 
 params:
-  L: 0.15
-  vdd_voltage: 1.8
+  vdd_voltage: 3.3
   sweep_start: 0
-  sweep_end: 1.8
+  sweep_end: 3.3
   sweep_step: 0.01
   load_cap: 10e-15
 
 variable:
+  L: null
   W_pmos_base: null
   W_nmos_base: null
 
-
+L_values: [0.28, 0.42, 0.56]
 W_values: [0.84, 1.05, 1.26, 1.47, 1.68, 1.89, 2.10, 2.31, 2.52]
 
 
 width_scales:
-  W_pmos:   [W_pmos_base, 20]
-  W_nmos:   [W_nmos_base, 20]
+  W_pmos:   [W_pmos_base, 1]
+  W_nmos:   [W_nmos_base, 1]
 
 
-subckt_name: SKY130_INV
+subckt_name: GF180MCU_INV
 subckt_pins: 
   - OUT
   - IN
@@ -111,10 +111,10 @@ metric_post:
 # keep this block present (your code expects this key), but it won’t be injected;
 # the subckt is inlined below inside testbench_template
 ota_subckt_template: |
-    .subckt SKY130_INV OUT IN VSS VDD
-    x1 OUT IN VDD VDD sky130_fd_pr__pfet_01v8 w={W_pmos} l={L}
-    x2 OUT IN VSS VSS sky130_fd_pr__nfet_01v8 w={W_nmos} l={L}
-    .ends SKY130_INV
+    .subckt GF180MCU_INV OUT IN VSS VDD
+    x1 OUT IN VDD VDD pmos_3p3 w={W_pmos} l={L}
+    x2 OUT IN VSS VSS nmos_3p3 w={W_nmos} l={L}
+    .ends GF180MCU_INV
 
 
 testbench_template: |
@@ -167,15 +167,15 @@ testbench_template: |
     * Dynamic power
     let dynamic_power = abs(avg_power_calc - static_power_abs)
     
-    * Measure propagation delays at 50% threshold (0.9V)
+    * Measure propagation delays at 50% threshold (1.65V)
     * Rising edge (LOW to HIGH) - first crossing
-    meas tran t_in_50_rise WHEN v(IN)=0.9 CROSS=1
-    meas tran t_out_50_rise WHEN v(OUT)=0.9 CROSS=1
+    meas tran t_in_50_rise WHEN v(IN)=1.65 CROSS=1
+    meas tran t_out_50_rise WHEN v(OUT)=1.65 CROSS=1
     let tplh = t_out_50_rise - t_in_50_rise
     
     * Falling edge (HIGH to LOW) - second crossing
-    meas tran t_in_50_fall WHEN v(IN)=0.9 CROSS=2
-    meas tran t_out_50_fall WHEN v(OUT)=0.9 CROSS=2
+    meas tran t_in_50_fall WHEN v(IN)=1.65 CROSS=2
+    meas tran t_out_50_fall WHEN v(OUT)=1.65 CROSS=2
     let tphl = t_out_50_fall - t_in_50_fall
     let average_delay = (tplh + tphl)/2
     

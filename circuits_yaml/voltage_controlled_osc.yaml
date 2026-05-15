@@ -1,4 +1,4 @@
-pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+pdk_lib_path: "/Users/garrett/workspace/pdk/sky130/libraries/sky130_fd_pr/latest/models/sky130.lib.spice"
 align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
 pex_script_path: "./test_magic_pex.py"
 results_dir: "./vco_optimization_results/fom_test_new"
@@ -54,8 +54,7 @@ metrics:
   - freq_at_max
   - power_uw
   - vco_gain_MHz_per_V
-  - fom
-
+  - fom_user
 base_metrics:
   tuning_range_percent:
     name: "Tuning Range"
@@ -81,7 +80,7 @@ base_metrics:
     format: ".1f"
     degradation_key: "gain_percent"
 
-  fom:
+  fom_user:
     name: "FOM"
     unit: ""
     format: ".3f"
@@ -108,7 +107,7 @@ metric_post:
     decimals: 1
     unit: "MHz/V"
 
-  fom:
+  fom_user:
     expr: "(tuning_range_percent / 100) * (freq_at_max / 1e9) * (1000 / power_uw) * (vco_gain_MHz_per_V / 1000) * 10"
     scale: 1
     decimals: 3

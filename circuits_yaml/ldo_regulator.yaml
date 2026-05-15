@@ -1,4 +1,4 @@
-pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+pdk_lib_path: "/Users/garrett/workspace/pdk/sky130/libraries/sky130_fd_pr/latest/models/sky130.lib.spice"
 align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
 pex_script_path: "./test_magic_pex.py"
 results_dir: "./ldo_optimization_results/fom_test_new"
@@ -60,8 +60,7 @@ metrics:
   - load_reg_mv_per_ma
   - psrr_db
   - power_uw
-  - fom
-
+  - fom_user
 base_metrics:
   vout:
     name: "Output Voltage"
@@ -93,7 +92,7 @@ base_metrics:
     unit: "µW"
     format: ".1f"
     degradation_key: "power_percent"
-  fom:
+  fom_user:
     name: "FOM"
     unit: ""
     format: ".4f"
@@ -124,7 +123,7 @@ metric_post:
     scale: 1
     decimals: 1
     unit: "µW"
-  fom:
+  fom_user:
     # FOM = (PSRR × Iload_max) / (Dropout × Line_Reg × Load_Reg × Power)
     # Better: Higher PSRR, lower dropout, lower regulations, lower power
     expr: "(abs(psrr_db) * 10) / (max(dropout_mv, 1) * max(line_reg_mv_per_v, 0.01) * max(load_reg_mv_per_ma, 0.001) * max(power_uw, 1))"

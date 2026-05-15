@@ -1,4 +1,4 @@
-pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+pdk_lib_path: "/Users/garrett/workspace/pdk/sky130/libraries/sky130_fd_pr/latest/models/sky130.lib.spice"
 align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
 pex_script_path: "./test_magic_pex.py"
 results_dir: "./nand_gate_results/fom_test_new"
@@ -47,8 +47,7 @@ metrics:
   - energy_per_transition_fj
   - noise_margin_high
   - noise_margin_low
-  - fom
-
+  - fom_user
 base_metrics:
   tphl_ps:
     name: "Propagation Delay (H→L)"
@@ -85,7 +84,7 @@ base_metrics:
     unit: "V"
     format: ".4f"
     degradation_key: "nml_percent"
-  fom:
+  fom_user:
     name: "FOM"
     unit: ""
     format: ".4f"
@@ -120,7 +119,7 @@ metric_post:
     scale: 1
     decimals: 4
     unit: "V"
-  fom:
+  fom_user:
     # FOM = (NMH × NML) / (avg_delay_ps × energy_per_transition_fj)
     # Maximize: Noise margins
     # Minimize: Average delay and energy per transition

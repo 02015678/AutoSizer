@@ -2205,9 +2205,8 @@ class LLMOptimizationAgent:
     def _validate_search_decision(self, decision: Dict):
         """Validate search-specific decision fields"""
         valid_methods = [
-            'lhs', 'bayesian', 'optuna', 'adaptive',
-            'multistart', 'random', 'refined', 'grid'
-            # 'genetic', 'annealing' — temporarily disabled (constraint-blind FOM paths)
+            'lhs', 'genetic', 'bayesian', 'optuna', 'adaptive',
+            'annealing', 'multistart', 'random', 'refined', 'grid'
         ]
 
         if decision['method'] not in valid_methods:

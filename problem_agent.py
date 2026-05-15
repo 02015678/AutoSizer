@@ -74,7 +74,6 @@ You must provide your analysis in **valid JSON format only**. Your response shou
 3. Each section should be 3-5 sentences focused on OPTIMIZATION VARIABLES
 4. The "key_insights_for_optimization" array must contain 3-5 strings (bullet points as array elements)
 5. All strings must properly escape special characters (quotes, newlines, etc.)
-6. For fom (Figure of Merit), consider that it's calculated as (dc_gain_db * ugbw) / power_dc, so variables that increase gain/bandwidth or decrease power will improve fom
 
 Focus your analysis on the OPTIMIZATION VARIABLES and their impact on performance.
 """
