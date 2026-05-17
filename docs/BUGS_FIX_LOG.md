@@ -460,3 +460,162 @@ For the inverter bug case: fi=0.01375, FOM=1.8848 → penalty=0.079, penalized F
 | File | Change |
 |------|--------|
 | `advanced_search_methods.py:1369-1434` | `_get_constraint_penalty()` — FOM-scaled exp barrier replaces linear cap |
+
+---
+
+## 6. `round(val, 2)` Truncates Meter-Scale W/L Values — **FIXED 2026-05-17**
+
+### The Bug
+
+In `apply_scales()`, `round(val, 2)` rounds to 2 decimal places. For meter-scale values (no `.option scale=1e-6`), this destroys sub-micron dimensions:
+
+```
+W_tail_base = 0.60e-6, factor = 2
+val = 0.60e-6 * 2 = 1.2e-6
+round(1.2e-6, 2) = 0.0   ← zeroed!
+```
+
+The netlist gets `w=0.0 l=0.0`, making every device zero-width/zero-length.
+
+This only worked before because `.option scale=1e-6` was used with µm-scale values (e.g., `W=0.84 → 0.84µm`), so `round(0.84 * 2, 2) = 1.68` was fine. For PDKs with scale=1 (GF 180nm, etc.), removing `.option scale=1e-6` and using explicit meter values (`W_values: [0.60e-6, ...]`) triggered the truncation.
+
+### The Fix
+
+**Location:** `iterative_ota_optimization.py:733` — `apply_scales()`.
+
+```
+- fmt[final_name] = round(val, 2)
++ fmt[final_name] = float(f'{val:.4g}')
+```
+
+`:.4g` formats to 4 significant digits, which correctly preserves both µm-scale and meter-scale values:
+
+| Scale | Base × factor | Before (`round`) | After (`:.4g`) |
+|-------|--------------|-------------------|----------------|
+| Meter | 0.60e-6 × 2 = 1.2e-6 | `0.0` ❌ | `1.2e-06` ✅ |
+| Meter | 0.28e-6 × 3 = 8.4e-7 | `0.0` ❌ | `8.4e-07` ✅ |
+| µm | 0.84 × 10 = 8.4 | `8.4` ✅ | `8.4` ✅ |
+| µm | 0.84 × 10 = 8.40000000001 (FP noise) | `8.4` ✅ | `8.4` ✅ |
+
+### Verification
+
+A full simulation with GF 180nm PDK confirmed:
+- Netlist: `w=1.2e-06 l=8.4e-07` (non-zero, correct)
+- Simulation: no errors, valid results (gain=27.3dB, power=32µW, ugbw=5.75MHz)
+
+### Files Affected
+
+| File | Change |
+|------|--------|
+| `iterative_ota_optimization.py:733` | `apply_scales()` — replaced `round(val, 2)` with `float(f'{val:.4g}')` |
+
+---
+
+## 7. Missing Commas in LLM-Generated JSON — **FIXED 2026-05-17**
+
+### The Bug
+
+The LLM sometimes omits commas between JSON elements — between adjacent objects (`}{`), arrays (`][`), or after object/array values followed by a key (`} "key"`). The existing `parse_llm_json_response()` only removed trailing commas but didn't insert missing ones, so these responses would hit the fallback recovery strategies or fail entirely.
+
+### The Fix
+
+**Location:** `llm_guided_ota_optimization.py:274-279` — added 6 regex substitutions before the trailing-comma fix:
+
+| Pattern | Replacement | Example |
+|---------|-----------|---------|
+| `}\s*{` | `},{` | `}{` → `},{` |
+| `]\s*\{` | `],{` | `] {` → `],{` |
+| `]\s*\[` | `],[` | `][` → `],[` |
+| `"\s*\{` | `",{` | `"{"` → `",{"` |
+| `}\s*"(?=\s*[a-zA-Z])` | `}, "` | `} "key"` → `}, "key"` |
+| `]\s*"(?=\s*[a-zA-Z])` | `], "` | `] "key"` → `], "key"` |
+
+### Files Affected
+
+| File | Change |
+|------|--------|
+| `llm_guided_ota_optimization.py:274-279` | Added missing-comma repairs before existing trailing-comma fix |
+
+---
+
+## 8. LHS Dead-Zone Detection & Re-Run — **FIXED 2026-05-17**
+
+### The Bug
+
+In Trial 2 of the GF five_trans_ota run, the LLM chose a narrow 3-value range for `W_tail_base` and `L_tail_base`. The initial LHS found 0 feasible designs, but the LLM spent 83 more sims cycling through optuna/genetic in the same dead subspace before finally triggering regeneration. The LLM treated LHS as a one-time initialization and never considered re-running it with a different seed for an independent draw.
+
+### The Fix
+
+Three changes:
+
+#### a) LHS re-run guidance in prompts (`prompts.py`)
+
+Updated the LHS description, decision framework (`Factor 2b: Subspace Viability`), and parameter tuning section to:
+- Explain LHS can be re-run with different seeds for independent subspace draws
+- Add explicit guidance on when to re-run LHS vs regenerate
+- State LHS runs at most TWICE per inner loop
+
+#### b) Constraint feasibility overview in state report (`llm_guided_ota_optimization.py`)
+
+New method `_build_constraint_overview_section()` computes per-constraint best values and % of target across ALL designs, then inserts it into the LLM's state report (no new LLM call needed).
+
+Example output:
+```
+### Constraint Feasibility Overview (best values across all designs)
+- dc_gain_db: best=14.85 vs target >40.0  (37.1% of target)
+- ugbw: best=1.91 vs target >3.0  (63.7% of target)
+- power_dc: best=97.67 vs target <90.0  (over by 8.5%)
+```
+
+#### c) LHS count tracking and seed rotation (`llm_guided_ota_optimization.py`)
+
+- `lhs_count` per inner loop, max 2 (reset on regeneration)
+- Second LHS forces a different seed from the first
+- After 2 LHS runs, the method is overridden to `genetic` if LLM tries to pick LHS again
+- `lhs_count` is shown in the state report for LLM visibility
+
+### Files Affected
+
+| File | Change |
+|------|--------|
+| `prompts.py:108-114` | Updated LHS description with re-run and regeneration guidance |
+| `prompts.py:196-208` | Added Factor 2b: Subspace Viability to decision framework |
+| `prompts.py:250-254` | Updated LHS parameter tuning with seed rotation and max-2 rule |
+| `llm_guided_ota_optimization.py:1423-1487` | New `_build_constraint_overview_section()` method |
+| `llm_guided_ota_optimization.py:1529-1537` | Constraint overview wired into decision prompt |
+| `llm_guided_ota_optimization.py:2627-2629` | LHS count tracking variables |
+| `llm_guided_ota_optimization.py:2730-2744` | LHS max-2 enforcement and seed rotation |
+| `llm_guided_ota_optimization.py:2773` | Seed tracking after LHS execution |
+| `llm_guided_ota_optimization.py:2648` | `lhs_count` passed into state dict |
+
+---
+
+## 9. Wider Initial Search Space: 5-7 Values per Variable — **FIXED then REVERTED 2026-05-17**
+
+### The Bug
+
+Trial 2's `W_tail_base` had only `[1.2e-6, 2.4e-6, 4.8e-6]` (3 values), missing the 9.6e-6 headroom. The original "3-7 values each" was too loose on the low end.
+
+### First Attempt (5-7 values) — FAILED
+
+Changed minimum to 5. This caused Trial 0 to balloon from 43→195 designs: with 6 variables at 5-7 values each, the combinatorial space was 32,400-46,656 combos. With only 25 LHS points and demanding GF specs, coverage dropped to 0.05%. The search was spread too thin.
+
+### Final Fix (3-5 values + extremes guard)
+
+**Location:** `problem_agent.py:114,341`.
+
+Reverted to near-original but narrowed the maximum and added an explicit extremes rule:
+
+```
+- 3-5 values each (include smallest and largest from available list)
+- - [ ] Each variable has 3-5 values (smallest and largest always included)
+```
+
+This keeps subspaces compact (3⁶=729 to 5⁶=15,625 combos) while the extremes rule prevents accidentally missing the range endpoints.
+
+### Files Affected
+
+| File | Change |
+|------|--------|
+| `problem_agent.py:114` | "5-7 values each, or all available..." → "3-5 values each, include smallest and largest from available list" |
+| `problem_agent.py:341` | "Each variable has 5-7 values (or all available if fewer)" → "Each variable has 3-5 values (smallest and largest always included)" |

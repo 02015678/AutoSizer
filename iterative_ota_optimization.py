@@ -730,7 +730,8 @@ class ControlledOTAOptimizer:
                         f"value_provider did not supply."
                     )
                 val = fmt[unit_key] * factor
-                fmt[final_name] = round(val, 2)
+                # Round to 4 significant digits (handles both µm and meter-scale values)
+                fmt[final_name] = float(f'{val:.4g}')
 
 
         # =======================================================================

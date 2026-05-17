@@ -271,6 +271,14 @@ def parse_llm_json_response(llm_response):
     text = text[start:end+1]
 
     # AGGRESSIVE FIXES:
+    # 0. Fix missing commas between JSON elements (common LLM omission)
+    text = re.sub(r'}\s*\{', '},{', text)        # } {  → },{
+    text = re.sub(r']\s*\{', '],{', text)        # ] {  → ],{
+    text = re.sub(r']\s*\[', '],[', text)        # ] [  → ],[
+    text = re.sub(r'"\s*\{', '",{', text)        # " {  → ",{  (value string before object)
+    text = re.sub(r'(?<=\})\s*"(?=\s*[a-zA-Z])', ', "', text)  # } "key" → }, "key"
+    text = re.sub(r'(?<=\])\s*"(?=\s*[a-zA-Z])', ', "', text)  # ] "key" → ], "key"
+
     # 1. Remove trailing commas
     text = re.sub(r',(\s*[}\]])', r'\1', text)
 
@@ -1410,13 +1418,86 @@ class LLMOptimizationAgent:
 
         search_space_section = '\n'.join(search_space_lines)
 
+        lhs_runs = state.get('lhs_count', 0)
+        lhs_info = f"  (LHS runs: {lhs_runs}/2)" if lhs_runs > 0 else ""
+
         return f"""## CURRENT STATE
         {search_space_section}
 
         ### Budget and Progress
         - **Total designs searched: {total_designs}**
-        - **Iterations completed: {state['num_iterations']}**
+        - **Iterations completed: {state['num_iterations']}{lhs_info}**
         - **Budget status**: {budget_status}"""
+
+    def _build_constraint_overview_section(self, state: Dict) -> str:
+        """Build a per-constraint best-values overview across all designs.
+
+        Shows the LLM the best value achieved for each individual constraint
+        vs its target, aggregated across ALL designs searched so far.
+        No new LLM call needed — data is embedded in the existing state report.
+        """
+        user_specs = self.config.get('user_specs_metric', '')
+        if not user_specs:
+            return ""
+
+        # Parse constraints from user_specs_metric
+        import re
+        constraints = []
+        for m, op, t_str in re.findall(r'(\w+)\s*([<>=]+)\s*([\d.e+-]+)', user_specs):
+            if m.lower() == 'fom':
+                constraints.append(('fom', op, float(t_str)))
+            else:
+                constraints.append((m, op, float(t_str)))
+
+        if not constraints:
+            return ""
+
+        # Collect all designs from iteration history
+        all_designs = []
+        for iter_data in state.get('iterations', []):
+            all_designs.extend(iter_data.get('all_designs', []))
+
+        if not all_designs:
+            return ""
+
+        lines = ["### Constraint Feasibility Overview (best values across all designs)"]
+        max_violation = 0
+
+        for metric, op, target in constraints:
+            # Find the best value for this metric
+            best_val = -float('inf') if op == '>' else float('inf')
+            for d in all_designs:
+                v = d.get(metric)
+                if v is not None:
+                    if op == '>' and v > best_val:
+                        best_val = v
+                    elif op == '<' and v < best_val:
+                        best_val = v
+
+            if best_val == -float('inf') or best_val == float('inf'):
+                lines.append(f"- {metric}: NO DATA")
+                continue
+
+            # Compute % of target
+            if op == '>':
+                pct = (best_val / target) * 100 if target != 0 else 0
+                status = '✓ MET' if best_val > target else f'{pct:.1f}% of target'
+            elif op == '<':
+                pct = (target / max(best_val, 1e-12)) * 100 if best_val > 0 else 0
+                status = '✓ MET' if best_val < target else f'over by {(best_val/target - 1)*100:.1f}%'
+            else:
+                pct = 100
+                status = '?'
+
+            lines.append(f"- {metric}: best={best_val:.4g} vs target {op} {target}  ({status})")
+
+            # Track worst constraint for viability assessment
+            if op == '>' and best_val < target:
+                max_violation = max(max_violation, (target - best_val) / abs(target))
+            elif op == '<' and best_val > target:
+                max_violation = max(max_violation, (best_val - target) / abs(target))
+
+        return '\n'.join(lines)
 
 
     def _build_methods_section(self, metric_info: Dict) -> str:
@@ -1447,15 +1528,21 @@ class LLMOptimizationAgent:
 
 
             # Build prompt sections
+        constraint_overview = self._build_constraint_overview_section(state)
+
         prompt_parts = [
             self._build_header_section(user_specs, metric_info),
             self._build_current_state_section(state),
             self._build_iteration_history_section(state, metric_info),
+        ]
+        if constraint_overview:
+            prompt_parts.append(constraint_overview)
+        prompt_parts.extend([
             self._build_methods_section(metric_info),
             self._build_decision_framework_section(metric_info),
             self._build_parameter_tuning_section(),
             self._build_response_format_section()
-        ]
+        ])
 
         return "\n\n".join(prompt_parts)
 
@@ -2537,6 +2624,8 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
         last_best_fom = None
         improvement_threshold = 0.001  # 0.1% minimum improvement
         fom_converged = False  # NEW: Add convergence flag
+        lhs_count = 0  # Track LHS runs per inner loop (max 2)
+        last_lhs_seed = None  # Track seed used in first LHS for rotation
 
 
 
@@ -2554,6 +2643,7 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
                 'num_var': len(config["variable"]),
                 'total_designs_searched': len(optimizer.all_searched_designs),
                 'num_iterations': len(optimizer.iteration_history),
+                'lhs_count': lhs_count,
                 'iterations': []
             }
 
@@ -2641,6 +2731,23 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
                 print(f"Warning: Advanced method '{decision['method']}' not available, falling back to 'random'")
                 decision['method'] = 'random'
 
+            # Enforce LHS max 2 runs per inner loop
+            if decision['method'] == 'lhs':
+                if lhs_count >= 2:
+                    print(f"  LHS already run {lhs_count} times (max 2) — overridden to 'genetic'")
+                    decision['method'] = 'genetic'
+                else:
+                    # Rotate seed for second LHS
+                    if lhs_count == 1 and last_lhs_seed is not None:
+                        current_seed = decision.get('parameters', {}).get('seed')
+                        if current_seed == last_lhs_seed or current_seed is None:
+                            new_seed = last_lhs_seed + 42
+                            if 'parameters' not in decision:
+                                decision['parameters'] = {}
+                            decision['parameters']['seed'] = new_seed
+                            print(f"  Second LHS: rotating seed {last_lhs_seed} → {new_seed}")
+                    lhs_count += 1
+
             # Run iteration with LLM's strategy
             print(f"\n Running search with {decision['method']} method...")
             iter_result = optimizer.run_iteration(
@@ -2656,6 +2763,10 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
             if iter_result:
                 iter_result.method = decision['method']
                 iter_result.parameters = decision.get('parameters', {})
+
+                # Track LHS seed for seed rotation
+                if decision['method'] == 'lhs':
+                    last_lhs_seed = decision.get('parameters', {}).get('seed', last_lhs_seed)
 
                 # Update previous_best based on mode
                 if pre_layout_only:
