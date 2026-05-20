@@ -1,0 +1,156 @@
+pdk_lib_path: "/Users/garrett/workspace/pdk/sky130/libraries/sky130_fd_pr/latest/models/sky130.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pex_script_path: "./test_magic_pex.py"
+results_dir: "./3_stage_ring_osc_new_results/fom_test_new"
+
+user_specs: "Primary goal: Maximize oscillation frequency while minimizing power consumption for clock generation applications."
+
+user_specs_metric: "fom > 1.1 AND frequency_mhz > 400 AND power_uw < 300"
+
+params:
+  vdd_nom: 1.8
+  temp: 27
+  c_load: 50e-15
+
+variable:
+  L_inv: null
+  W_pmos: null
+  W_nmos: null
+
+L_values: [0.3, 0.4, 0.5, 0.6, 0.7]
+W_pmos_values: [1.0, 2.0, 3.0, 4.0, 8.0, 12.0]
+W_nmos_values: [0.5, 1.0, 1.5, 2.0, 4.0, 6.0]
+
+subckt_name: RING_OSC_3STAGE
+subckt_pins: [VDD, VSS, N0, N1, N2]
+I_O_pins: [VDD, VSS, N0, N1, N2]
+testbench_signals:
+  VDD: VDD
+  VSS: VSS
+  N0: N0
+  N1: N1
+  N2: N2
+
+metrics:
+  - frequency_mhz
+  - power_uw
+  - delay_per_stage_ps
+  - fom_user
+
+base_metrics:
+  frequency_mhz:
+    name: "Frequency at Nominal VDD"
+    unit: "MHz"
+    format: ".2f"
+    degradation_key: "frequency_percent"
+
+  power_uw:
+    name: "Power Consumption"
+    unit: "µW"
+    format: ".2f"
+    degradation_key: "power_percent"
+
+  delay_per_stage_ps:
+    name: "Delay per Stage"
+    unit: "ps"
+    format: ".2f"
+    degradation_key: "delay_percent"
+
+  fom_user:
+    name: "FOM"
+    unit: ""
+    format: ".3f"
+    degradation_key: "fom_percent"
+
+metric_post:
+  frequency_mhz:
+    scale: 1
+    decimals: 2
+    unit: "MHz"
+
+  power_uw:
+    scale: 1
+    decimals: 2
+    unit: "µW"
+
+  delay_per_stage_ps:
+    scale: 1
+    decimals: 2
+    unit: "ps"
+
+  fom_user:
+    expr: "frequency_mhz / max(power_uw, 0.1)"
+    scale: 1
+    decimals: 3
+    unit: ""
+
+ota_subckt_template: |
+    * 3-Stage Ring Oscillator — identical stages (shared W/L)
+    .subckt RING_OSC_3STAGE VDD VSS N0 N1 N2
+    XMP0 N1 N0 VDD VDD sky130_fd_pr__pfet_01v8 l={L_inv} w={W_pmos}
+    XMN0 N1 N0 VSS VSS sky130_fd_pr__nfet_01v8 l={L_inv} w={W_nmos}
+
+    XMP1 N2 N1 VDD VDD sky130_fd_pr__pfet_01v8 l={L_inv} w={W_pmos}
+    XMN1 N2 N1 VSS VSS sky130_fd_pr__nfet_01v8 l={L_inv} w={W_nmos}
+
+    XMP2 N0 N2 VDD VDD sky130_fd_pr__pfet_01v8 l={L_inv} w={W_pmos}
+    XMN2 N0 N2 VSS VSS sky130_fd_pr__nfet_01v8 l={L_inv} w={W_nmos}
+
+    CL0 N0 VSS {c_load}
+    CL1 N1 VSS {c_load}
+    CL2 N2 VSS {c_load}
+
+    .ends RING_OSC_3STAGE
+
+
+testbench_template: |
+    * 3-Stage Ring Oscillator — PWL VDD Sweep Characterization
+    .lib {pdk_lib_path} tt
+    .option scale=1e-6
+    .temp {temp}
+
+    {ota_subckt}
+
+    XRING {inst_pins} {subckt_name}
+
+
+    * PWL VDD source — steps through 4 voltage levels (500ns per step)
+    VS_VSS VSS 0 DC 0.0
+    VS_VDD VDD 0 PWL(
+    +  0n      0
+    +  5n      {vdd_nom}
+    +  500n    {vdd_nom}
+    +)
+
+    .ic v(N0)={vdd_nom} v(N1)={vdd_nom}
+    .control
+    set noaskquit
+    option numdgt=7
+
+    tran 1p 500n
+
+    * --- Frequency at VDD=1.8V (last 100ns: 400ns to 500ns) ---
+    meas tran t1_18 when v(N0)=0.9 rise=1 from=400n
+    meas tran t2_18 when v(N0)=0.9 rise=2 from=400n
+    let period_18 = t2_18 - t1_18
+
+    * --- Derived frequency metrics ---
+    let freq_18 = 1 / period_18 / 1e6
+
+    * Primary metric
+    let frequency_mhz = freq_18
+    print frequency_mhz
+
+    * --- Power at nominal VDD (measured during 1.8V plateau, last 100ns) ---
+    meas tran i_avg avg i(VS_VDD) from=400n to=500n
+    let power_uw = -i_avg * {vdd_nom} * 1e6
+    print power_uw
+
+    * --- Delay per stage (period / 2N, N=3) ---
+    let delay_per_stage_ps = period_18 / 6 * 1e12
+    print delay_per_stage_ps
+
+    quit
+    .endc
+
+    .end

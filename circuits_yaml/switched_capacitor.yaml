@@ -1,4 +1,4 @@
-pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+pdk_lib_path: "/Users/garrett/workspace/pdk/sky130/libraries/sky130_fd_pr/latest/models/sky130.lib.spice"
 align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
 pex_script_path: "./test_magic_pex.py"
 results_dir: "./switched_capacitor_optimization_test_folder/fom_test_new"
@@ -55,8 +55,7 @@ metrics:
   - power_uw
   - phase_margin_deg
   - ugbw_mhz
-  - fom
-
+  - fom_user
 # How to display each metric
 base_metrics:
   gain_db:
@@ -84,7 +83,7 @@ base_metrics:
     unit: "MHz"
     format: ".1f"
     degradation_key: "ugbw_percent"
-  fom:
+  fom_user:
     name: "FOM"
     unit: ""
     format: ".4f"
@@ -117,7 +116,7 @@ metric_post:
     decimals: 1
     unit: "MHz"
   
-  fom:
+  fom_user:
     # FOM = (UGBW × Phase_Margin) / (Power × |THD|)
     expr: "(ugbw_mhz * phase_margin_deg * gain_db * abs(thd_db)) / power_uw"
     scale: 1

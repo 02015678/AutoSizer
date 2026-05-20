@@ -74,7 +74,6 @@ You must provide your analysis in **valid JSON format only**. Your response shou
 3. Each section should be 3-5 sentences focused on OPTIMIZATION VARIABLES
 4. The "key_insights_for_optimization" array must contain 3-5 strings (bullet points as array elements)
 5. All strings must properly escape special characters (quotes, newlines, etc.)
-6. For fom (Figure of Merit), consider that it's calculated as (dc_gain_db * ugbw) / power_dc, so variables that increase gain/bandwidth or decrease power will improve fom
 
 Focus your analysis on the OPTIMIZATION VARIABLES and their impact on performance.
 """
@@ -112,7 +111,7 @@ Your task is to:
 
 1. **Rank ALL optimization variables** (1 to {total_num_variables}) based on their impact on {target_metric}
 2. **Select the top {num_variables_to_optimize} variables** to actively optimize
-3. **For the top {num_variables_to_optimize} variables**: Provide sparse search ranges covering small to large values (3-7 values each, including extremes)
+3. **For the top {num_variables_to_optimize} variables**: Provide sparse search ranges covering small to large values (3-5 values each, include smallest and largest from available list)
 4. **For the remaining variables**: Determine appropriate fixed values (will NOT be optimized)
 
 **Important Considerations:**
@@ -339,7 +338,7 @@ Decide on action based on the results:
 - [ ] All values are subsets of "Value Ranges"
 - [ ] No fixed parameters (like L, vdd) are being optimized
 - [ ] Total optimized variables: 3-4
-- [ ] Each variable has 3-7 values
+- [ ] Each variable has 3-5 values (smallest and largest always included)
 - [ ] JSON is valid (no trailing commas, proper quotes)
 
 ## JSON FORMAT RULES

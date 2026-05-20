@@ -1,25 +1,27 @@
-pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+pdk_lib_path: "/Users/garrett/workspace/pdk/sky130/libraries/sky130_fd_pr/latest/models/sky130.lib.spice"
 align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
 pex_script_path: "./test_magic_pex.py"
 results_dir: "./telescopic_ota_test_folder/fom_test_new"
 
 user_specs: "Primary goal: Maximize DC gain and UGBW while minimizing power consumption for a telescopic OTA with 1pF load."
-user_specs_metric: "fom > 0.100 AND dc_gain_db > 55 AND ugbw > 10 AND power_dc < 50"
+user_specs_metric: "dc_gain_db > 50 AND ugbw > 10 AND power_dc < 60"
 
 params:
-  L: 0.15
   vdd: 1.8
   vcm: 0.7
   cload: 1e-12
   ibias: 10e-6
   vbiasp1: 1.15
-  #W_diff: 0.84 
   
 variable:
   W_tail_base: null
   W_diff_base: null
   W_casc_base: null
   W_load_base: null
+  L_tail_base: null
+  L_diff_base: null
+  L_casc_base: null
+  L_load_base: null
 
 W_values: [0.84, 1.05, 1.26, 1.47, 1.68, 1.89, 2.10, 2.31, 2.52]
 
@@ -28,6 +30,14 @@ width_scales:
   W_diff:   [W_diff_base, 4]
   W_casc:   [W_casc_base, 2]
   W_load:   [W_load_base, 2]
+
+L_values: [0.30, 0.45, 0.90, 1.20, 1.50, 1.80, 2.10, 2.40, 2.70]
+
+length_scales:
+  L_tail:   [L_tail_base, 4]
+  L_diff:   [L_diff_base, 4]
+  L_casc:   [L_casc_base, 1]
+  L_load:   [L_load_base, 4]
 
 subckt_name: TELESCOPIC_OTA
 subckt_pins:
@@ -73,8 +83,7 @@ metrics:
   - dc_gain_db
   - ugbw
   - power_dc
-  - fom
-
+  - fom_user
 base_metrics:
   gain_db:
     name: "Gain"
@@ -100,7 +109,7 @@ base_metrics:
     format: ".1f"
     degradation_key: "area_percent"
 
-  fom:
+  fom_user:
     name: "FOM"
     unit: ""
     format: ".3f"
@@ -123,7 +132,7 @@ metric_post:
     decimals: 2
     unit: "µW"
 
-  fom:
+  fom_user:
     expr: "dc_gain_db * ugbw / power_dc"
     scale: 1
     decimals: 3
@@ -136,24 +145,24 @@ metric_post:
 ota_subckt_template: |
     .subckt TELESCOPIC_OTA VBIASN VBIASNC VBIASP1 VBIASP2 VINN VINP VOUTN VOUTP VDD 0
     * Tail current sources
-    xm1 ID   VBIASN  0   0  sky130_fd_pr__nfet_01v8 w={W_tail} l={L}
-    xm2 NET10 VBIASN 0   0  sky130_fd_pr__nfet_01v8 w={W_tail} l={L}
+    xm1 ID   VBIASN  0   0  sky130_fd_pr__nfet_01v8 w={W_tail} l={L_tail}
+    xm2 NET10 VBIASN 0   0  sky130_fd_pr__nfet_01v8 w={W_tail} l={L_tail}
     
     * Differential pair
-    xm3 NET8   VINP NET10 0 sky130_fd_pr__nfet_01v8 w={W_diff} l={L}
-    xm4 NET014 VINN NET10 0 sky130_fd_pr__nfet_01v8 w={W_diff} l={L}
+    xm3 NET8   VINP NET10 0 sky130_fd_pr__nfet_01v8 w={W_diff} l={L_diff}
+    xm4 NET014 VINN NET10 0 sky130_fd_pr__nfet_01v8 w={W_diff} l={L_diff}
     
     * NMOS cascode  (use VBIASNC here)
-    xm5 VOUTN VBIASNC NET8   0 sky130_fd_pr__nfet_01v8 w={W_casc} l={L} 
-    xm6 VOUTP VBIASNC NET014 0 sky130_fd_pr__nfet_01v8 w={W_casc} l={L}
+    xm5 VOUTN VBIASNC NET8   0 sky130_fd_pr__nfet_01v8 w={W_casc} l={L_casc} 
+    xm6 VOUTP VBIASNC NET014 0 sky130_fd_pr__nfet_01v8 w={W_casc} l={L_casc}
     
     * PMOS cascode
-    xm7 VOUTN VBIASP1 NET06 VDD sky130_fd_pr__pfet_01v8 w={W_casc} l={L}
-    xm8 VOUTP VBIASP1 NET012 VDD sky130_fd_pr__pfet_01v8 w={W_casc} l={L}
+    xm7 VOUTN VBIASP1 NET06 VDD sky130_fd_pr__pfet_01v8 w={W_casc} l={L_casc}
+    xm8 VOUTP VBIASP1 NET012 VDD sky130_fd_pr__pfet_01v8 w={W_casc} l={L_casc}
     
     * PMOS current source
-    xm9  NET06 VBIASP2 VDD VDD sky130_fd_pr__pfet_01v8 w={W_load} l={L}
-    xm10 NET012 VBIASP2 VDD VDD sky130_fd_pr__pfet_01v8 w={W_load} l={L}
+    xm9  NET06 VBIASP2 VDD VDD sky130_fd_pr__pfet_01v8 w={W_load} l={L_load}
+    xm10 NET012 VBIASP2 VDD VDD sky130_fd_pr__pfet_01v8 w={W_load} l={L_load}
     .ends TELESCOPIC_OTA
 
 
@@ -170,16 +179,16 @@ testbench_template: |
     
     * Bias Generation
     IBIAS_N VDD VBIASN DC {ibias}
-    XMN_BIAS VBIASN VBIASN 0 0 sky130_fd_pr__nfet_01v8 w={W_tail} l={L}
+    XMN_BIAS VBIASN VBIASN 0 0 sky130_fd_pr__nfet_01v8 w={W_tail} l={L_tail}
     
     IBIAS_P VBIASP2 0 DC {ibias}
-    XMP_BIAS VBIASP2 VBIASP2 VDD VDD sky130_fd_pr__pfet_01v8 w={W_load} l={L}
+    XMP_BIAS VBIASP2 VBIASP2 VDD VDD sky130_fd_pr__pfet_01v8 w={W_load} l={L_load}
     
     VBIASP1 VBIASP1 0 DC={vbiasp1}
     
     * NEW: NMOS cascode bias (a bit higher than VBIASN)
     IBIAS_NC VDD VBIASNC DC {ibias}
-    XMN_BIASC VBIASNC VBIASNC 0 0 sky130_fd_pr__nfet_01v8 w={W_casc} l={L}
+    XMN_BIASC VBIASNC VBIASNC 0 0 sky130_fd_pr__nfet_01v8 w={W_casc} l={L_casc}
     
     * Differential inputs
     VINP VINP 0 DC {vcm} AC 0.5

@@ -1,34 +1,39 @@
-pdk_lib_path: "/Users/garrett/workspace/pdk/sky130/libraries/sky130_fd_pr/latest/models/sky130.lib.spice"
-align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
+pdk_lib_path: "/Users/garrett/workspace/pdk/gf180mcu/libraries/gf180mcu_fd_pr/latest/models/ngspice/gf180mcu.lib.spice"
+align_pdk_path: "/path/to/ALIGN-pdk-gf180mcu/GF180MCU_PDK/"
 pex_script_path: "./test_magic_pex.py"
-results_dir: "./current_mirror_test_folder/fom_test_new"
+results_dir: "./five_trans_ota_gf_test_folder/fom_test"
 
-user_specs: "Primary goal: Maximize DC gain and UGBW while minimizing power consumption for a current-mirror OTA with 1pF load."
-user_specs_metric: "fom > 0.410 AND dc_gain_db > 55 AND ugbw > 10 AND power_dc < 50"
+user_specs: "Primary goal: Maximize DC gain and UGBW while minimizing power consumption for a five transistor OTA with 1pF load."
+user_specs_metric: "fom > 1.1 AND dc_gain_db > 45 AND ugbw > 15 AND power_dc < 70"
 
 params:
-  L: 0.15
-  vdd: 1.8
-  vcm: 0.9
+  vdd: 3.30
+  vcm: 1.65
   cload: 1e-12
-  ibias: 20e-6
+  ibias: 10e-6
 
 variable:
+  L_tail_base: null
+  L_diff_base: null
+  L_load_base: null
   W_tail_base: null
   W_diff_base: null
-  W_mirror_base: null
-  W_casc_base: null
+  W_load_base: null
 
-W_values: [0.84, 1.05, 1.26, 1.47, 1.68, 1.89, 2.10, 2.31, 2.52]
+L_values: [0.28e-6, 0.42e-6, 0.56e-6, 0.84e-6, 1.12e-6, 1.68e-6, 2.24e-6, 3.36e-6]  
+W_values: [0.60e-6, 1.20e-6, 1.80e-6, 2.40e-6, 3.60e-6, 4.80e-6, 7.20e-6, 9.60e-6]
+
+length_scales:
+  L_tail:   [L_tail_base, 2]
+  L_diff:   [L_diff_base, 1]
+  L_load:   [L_load_base, 2]
 
 width_scales:
   W_tail:   [W_tail_base, 4]
-  W_diff:   [W_diff_base, 8]
-  W_mirror: [W_mirror_base, 6]
-  W_out:    [W_mirror_base, 12]
-  W_casc:   [W_casc_base, 16]
+  W_diff:   [W_diff_base, 4]
+  W_load:   [W_load_base, 4]
 
-subckt_name: CURRENT_MIRROR_OTA
+subckt_name: FIVE_TRANSISTOR_OTA
 subckt_pins:
   - VSS
   - VDD
@@ -117,20 +122,16 @@ metric_post:
 # keep this block present (your code expects this key), but it won’t be injected;
 # the subckt is inlined below inside testbench_template
 ota_subckt_template: |
-  .subckt CURRENT_MIRROR_OTA VSS VDD VOUT VINN VINP ID
-  XM5 ID ID VSS VSS sky130_fd_pr__nfet_01v8 w={W_tail} l={L}
-  XM4 SOURCE ID VSS VSS sky130_fd_pr__nfet_01v8 w={W_tail} l={L}
-  XM3 NET7 VINN SOURCE VSS sky130_fd_pr__nfet_01v8 w={W_diff} l={L}
-  XM0 NET8 VINP SOURCE VSS sky130_fd_pr__nfet_01v8 w={W_diff} l={L}
-  XM2 NET7 NET7 VDD VDD sky130_fd_pr__pfet_01v8 w={W_mirror} l={L}
-  XM1 NET8 NET8 VDD VDD sky130_fd_pr__pfet_01v8 w={W_mirror} l={L}
-  XM6 VOUT NET7 VDD VDD sky130_fd_pr__pfet_01v8 w={W_out} l={L}
-  XM7 NET9 NET8 VDD VDD sky130_fd_pr__pfet_01v8 w={W_out} l={L}
-  XM8 NET9 NET9 SOURCE VSS sky130_fd_pr__nfet_01v8 w={W_casc} l={L}
-  XM9 VOUT NET9 SOURCE VSS sky130_fd_pr__nfet_01v8 w={W_casc} l={L}
-  .ends CURRENT_MIRROR_OTA
+    .subckt FIVE_TRANSISTOR_OTA VSS VDD VOUT VINN VINP ID
+    xm5 ID     ID VSS VSS nmos_3p3 w={W_tail} l={L_tail} 
+    xm4 SOURCE ID VSS VSS nmos_3p3 w={W_tail} l={L_tail} 
+    xm3 VOUT VINN SOURCE VSS nmos_3p3 w={W_diff} l={L_diff} 
+    xm0 NET8 VINP SOURCE VSS nmos_3p3 w={W_diff} l={L_diff} 
+    xm2 VOUT NET8 VDD VDD pmos_3p3 w={W_load} l={L_load} 
+    xm1 NET8 NET8 VDD VDD pmos_3p3 w={W_load} l={L_load} 
+    .ends FIVE_TRANSISTOR_OTA
 
-# INLINED subckt here; no {ota_subckt} placeholder needed
+
 testbench_template: |
   * OTA testbench
     .lib {pdk_lib_path} tt
@@ -144,27 +145,21 @@ testbench_template: |
     VINN VINN 0 DC {vcm} AC -0.5
     XOTA {inst_pins} {subckt_name}
     CLOAD VOUT 0 {cload}
-    
     .op
-    
     .control
     op
     let vdd_current = abs(i(VDD))
     let power_dc = vdd_current * {vdd}
     print power_dc
-    
     ac dec 100 1 10g
     let vout_ac = v(VOUT)
     let gain_db = db(vout_ac)
     let dc_gain_db = gain_db[0]
     print dc_gain_db
-    
     if dc_gain_db > 0
         meas ac ugbw WHEN gain_db=0 CROSS=1
     end
-    
     quit
     .endc
-    
     .end
 

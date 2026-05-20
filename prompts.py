@@ -106,11 +106,13 @@ You have access to state-of-the-art optimization algorithms. Analyze the current
 ### Method Arsenal:
 
 **1. 'lhs' (Latin Hypercube Sampling)**
-- **Strength**: Guarantees uniform space coverage, no blind spots
+- **Strength**: Guarantees uniform space coverage, no blind spots, deterministic stratification
 - **Best when**: Design space is poorly understood, few previous results, need broad exploration
 - **Weakness**: Ignores previous results completely
 - **Sample size**: 15-30 (adjust based on dimensionality of the design space)
 - **Strategy type**: Pure exploration
+- **Re-running LHS**: LHS is deterministic given a seed. With a DIFFERENT seed, LHS draws entirely different points from the same subspace — an independent second draw. This is a valid strategy when the first LHS did not find promising individual constraints. Run LHS at most TWICE per inner loop.
+- **After LHS**: Check the constraint feasibility overview (per-constraint best values vs targets). If ALL individual constraints show promising values (close to targets), the subspace is viable — proceed to focused optimization. If SOME constraint is far from target across ALL designs, either: (1) re-run LHS with a different seed for a fresh draw, or (2) trigger regeneration (action: stop) if the subspace itself appears non-viable.
 
 **2. 'genetic' (Genetic Algorithm)**
 - **Strength**: Evolves toward good regions, robust to local optima, finds multiple solutions
@@ -196,6 +198,16 @@ def decision_framework_section(metric_name: str) -> str:
       - 1 iteration plateau: Normal variation, continue
       - 2 iteration plateau: Consider method switching
       - 3+ iteration plateau with method diversity: Likely converged, consider stopping
+
+    ### Factor 2b: Subspace Viability (especially after LHS)
+    - **Check the Constraint Feasibility Overview** in the state report — it shows per-constraint best values vs targets
+    - **Viable subspace**: ALL individual constraints show promising values (>70-80% of target) in some designs
+      → Continue with focused optimization (optuna, bayesian, genetic, etc.)
+    - **Uncertain subspace**: Most constraints are close but one or two are far (<50%)
+      → Re-run LHS with a DIFFERENT seed for an independent draw from the same subspace (at most 2 LHS total)
+    - **Non-viable subspace**: Multiple constraints are far from targets across ALL designs, AND the variables responsible for those constraints lack headroom
+      → Trigger regeneration (action: stop). The current variable ranges likely cannot satisfy the specs.
+    - **After 2 LHS runs**: If the subspace still appears non-viable, regeneration is the right call — do not run LHS a third time.
     
     ### Factor 3: Design Space Insights
     - **Parameter sensitivity**: Which parameters most affect {metric_name['name']}?
@@ -249,9 +261,10 @@ def parameter_tuning_section() -> str:
     
     **1. 'lhs' (Latin Hypercube Sampling) parameters:**
     - **seed**: [integer, optional] Controls the random state for deterministic sampling
-      - Use different seeds in consecutive iterations to maximize exploration diversity
-      - When first using LHS: Use a random seed for broad exploration
-      - When returning to LHS after other methods: Use seed to explore unsampled regions
+      - Use DIFFERENT seeds for consecutive LHS runs to maximize exploration diversity
+      - First LHS: use a random seed for broad exploration
+      - Second LHS (if needed): MUST use a different seed for an independent draw
+      - LHS runs at most TWICE per inner loop
     
     **2. 'genetic' parameters:**
     - **mutation_rate**: [0.05-0.5] Higher values increase exploration
@@ -499,7 +512,7 @@ def response_format_section() -> str:
     }}
     ```
     
-    Where "method" is ONE of these: lhs, genetic, bayesian, adaptive, annealing, multistart
+    Where "method" is ONE of these: lhs, genetic, bayesian, optuna, adaptive, annealing, multistart
     
     ### TEMPLATE 2: If you want to STOP optimizing (use "stop")
     ```json

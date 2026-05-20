@@ -19,7 +19,7 @@ def modify_yaml_results_dir(input_yaml_path, output_yaml_path, new_results_dir):
     """
     with open(input_yaml_path, 'r') as f:
         lines = f.readlines()
-    
+
     modified_lines = []
     for line in lines:
         # Check if this line contains results_dir
@@ -29,28 +29,28 @@ def modify_yaml_results_dir(input_yaml_path, output_yaml_path, new_results_dir):
             modified_lines.append(' ' * indent + f'results_dir: "{new_results_dir}"\n')
         else:
             modified_lines.append(line)
-    
+
     # Write to output file
     with open(output_yaml_path, 'w') as f:
         f.writelines(modified_lines)
-        
+
 def aggregate_trial_metrics_across_dirs(base_results_dir, n_trials):
     """Aggregate metrics from separate trial directories"""
     all_metrics = []
-    
+
     for trial_idx in range(n_trials):
         # Each trial has its own directory
         trial_dir = f"{base_results_dir}_trial_{trial_idx}"
-        
+
         # Read from trial_X_summary.json (created by run_llm_guided_optimization)
         trial_summary_file = os.path.join(trial_dir, f"trial_{trial_idx}_summary.json")
-        
+
         print(f"  Looking for: {trial_summary_file}")
-        
+
         if os.path.exists(trial_summary_file):
             with open(trial_summary_file, 'r') as f:
                 trial_data = json.load(f)
-                
+
                 # Extract metrics directly from trial summary
                 metrics = {
                     'best_fom': trial_data.get('best_fom'),
@@ -62,7 +62,7 @@ def aggregate_trial_metrics_across_dirs(base_results_dir, n_trials):
                     'num_iterations': trial_data.get('num_iterations', 0),
                     'convergence_reason': trial_data.get('convergence_reason', 'unknown')
                 }
-                
+
                 all_metrics.append(metrics)
                 print(f"    Found trial {trial_idx} metrics")
                 print(f"    - Best FOM: {metrics['best_fom']}")
@@ -71,23 +71,23 @@ def aggregate_trial_metrics_across_dirs(base_results_dir, n_trials):
                 print(f"    - Success: {metrics['success']}")
         else:
             print(f"  Not found: {trial_summary_file}")
-    
+
     if not all_metrics:
         print(f"  No metrics found")
         return None
-    
+
     print(f" Successfully loaded {len(all_metrics)}/{n_trials} trials\n")
-    
+
     # Extract data for statistics
     best_foms = [m['best_fom'] for m in all_metrics if m['best_fom'] is not None]
     evals_to_best = [m['evals_to_best'] for m in all_metrics if m['evals_to_best'] is not None]
     times = [m['total_time_seconds'] for m in all_metrics if m['total_time_seconds'] is not None]
     successes = [m['success'] for m in all_metrics]
-    
+
     if not best_foms:
         print(f"  No valid FOM values found")
         return None
-    
+
     return {
         'avg_best_fom': float(np.mean(best_foms)),
         'std_best_fom': float(np.std(best_foms)),
@@ -100,17 +100,21 @@ def aggregate_trial_metrics_across_dirs(base_results_dir, n_trials):
         'individual_trials': all_metrics  # Include raw data for reference
     }
 
-CIRCUIT_REGISTRY = {} #replace this with circuit name
+CIRCUIT_REGISTRY = {
+    "bandgap_reference": {
+        "config_path": "./circuits_yaml/bandgap_reference.yaml"
+    }
+}
 
 def save_global_summary(all_circuit_results, summary_file="./all_circuits_llm_agent_summary.json"):
     """Save or update global summary file"""
     with open(summary_file, 'w') as f:
         json.dump(all_circuit_results, f, indent=2)
     print(f"Global summary updated: {summary_file}")
-    
+
 def main():
     """Run LLM-guided optimization for all circuits with multiple trials"""
-    
+
     # ========================================================================
     # GLOBAL CONFIGURATION
     # ========================================================================
@@ -118,11 +122,11 @@ def main():
     max_total_designs = 100
     num_variables_to_optimize = 6
     max_regeneration_cycles = 3
-    plateau_patience = 2 
+    plateau_patience = 2
     pre_layout_only = True
-    
+
     global_summary_file = "./all_circuits_llm_agent_summary_new_circuits.json"
-    
+
     # Load existing results if file exists (for resuming)
     if os.path.exists(global_summary_file):
         print(f"Found existing summary file, loading previous results...")
@@ -130,7 +134,7 @@ def main():
             all_circuit_results = json.load(f)
     else:
         all_circuit_results = {}
-    
+
     print(f"\n{'='*80}")
     print(f"MULTI-CIRCUIT MULTI-TRIAL LLM-GUIDED OPTIMIZATION")
     print(f"{'='*80}")
@@ -139,7 +143,7 @@ def main():
     print(f"max_regeneration_cycles: {max_regeneration_cycles}")
     print(f"Initial num_variables_to_optimize: {num_variables_to_optimize}")
     print(f"{'='*80}\n")
-    
+
     # ========================================================================
     # LOOP THROUGH ALL CIRCUITS
     # ========================================================================
@@ -147,14 +151,14 @@ def main():
         print(f"\n{'#'*80}")
         print(f"# CIRCUIT {circuit_idx + 1}/{len(CIRCUIT_REGISTRY)}: {circuit_name.upper()}")
         print(f"{'#'*80}\n")
-        
+
         # Skip if already completed
         if circuit_name in all_circuit_results and all_circuit_results[circuit_name].get('status') == 'SUCCESS':
             print(f"{circuit_name} already completed, skipping...\n")
             continue
-        
+
         config_path = circuit_info['config_path']
-        
+
         # Check if config exists
         if not os.path.exists(config_path):
             print(f"Config file not found: {config_path}")
@@ -165,48 +169,48 @@ def main():
             }
             save_global_summary(all_circuit_results, global_summary_file)
             continue
-        
+
         # Load base config to get original results_dir
         with open(config_path, 'r') as f:
             base_config = yaml.safe_load(f)
-        
+
         original_results_dir = base_config.get('results_dir', f'./{circuit_name}_test_folder')
-        
+
         print(f"Config loaded from: {config_path}")
         print(f"Base results dir: {original_results_dir}\n")
-        
+
         # ====================================================================
         # RUN MULTIPLE TRIALS FOR THIS CIRCUIT
         # ====================================================================
         trial_results = []
-        
+
         for trial_idx in range(n_trials):
             print(f"\n{'-'*80}")
             print(f"  CIRCUIT: {circuit_name} | TRIAL {trial_idx + 1}/{n_trials}")
             print(f"{'-'*80}\n")
-            
+
             # Create trial-specific results directory
             trial_results_dir = f"{original_results_dir}_trial_{trial_idx}"
             os.makedirs(trial_results_dir, exist_ok=True)
-            
+
             # Create modified YAML file (only results_dir changed)
             trial_config_path = os.path.join(trial_results_dir, f"{circuit_name}_trial_{trial_idx}.yaml")
             modify_yaml_results_dir(config_path, trial_config_path, trial_results_dir)
-            
+
             print(f"  Trial config saved → {trial_config_path}")
             print(f"  Results directory → {trial_results_dir}\n")
-            
+
             # Load the modified config for this trial
             with open(trial_config_path, 'r') as f:
                 config = yaml.safe_load(f)
-            
+
             # Initialize trial result entry
             trial_result = {
                 "trial": trial_idx,
                 "results_dir": trial_results_dir,
                 "config_path": trial_config_path
             }
-            
+
             try:
                 # Run optimization
                 optimizer = run_llm_guided_optimization(
@@ -218,21 +222,21 @@ def main():
                                     plateau_patience=plateau_patience,
                                     trial_index=trial_idx
                                 )
-                
+
                 # Mark as success
                 trial_result["status"] = "SUCCESS"
                 trial_result["timestamp"] = datetime.now().isoformat()
-                
+
                 print(f"\n {circuit_name} Trial {trial_idx + 1}/{n_trials} completed")
-                
+
             except KeyboardInterrupt:
                 print(f"\n  Interrupted by user")
-                
+
                 # Mark trial as interrupted
                 trial_result["status"] = "INTERRUPTED"
                 trial_result["timestamp"] = datetime.now().isoformat()
                 trial_results.append(trial_result)
-                
+
                 # Save partial results
                 all_circuit_results[circuit_name] = {
                     "status": "INTERRUPTED",
@@ -241,33 +245,33 @@ def main():
                 }
                 save_global_summary(all_circuit_results, global_summary_file)
                 raise
-                
+
             except Exception as e:
                 print(f"\n  {circuit_name} Trial {trial_idx + 1}/{n_trials} failed: {e}")
                 import traceback
                 traceback.print_exc()
-                
+
                 # Mark trial as failed
                 trial_result["status"] = "FAILED"
                 trial_result["error"] = str(e)
                 trial_result["timestamp"] = datetime.now().isoformat()
-            
+
             # Append result after try-except (always executed unless KeyboardInterrupt)
             trial_results.append(trial_result)
 
-        
+
         # ====================================================================
         # AGGREGATE RESULTS FOR THIS CIRCUIT
         # ====================================================================
         print(f"\n{'='*80}")
         print(f"AGGREGATING RESULTS FOR {circuit_name.upper()}")
         print(f"{'='*80}\n")
-        
+
         aggregated = aggregate_trial_metrics_across_dirs(
             base_results_dir=original_results_dir,
             n_trials=n_trials
         )
-        
+
         if aggregated:
             print(f"\n{'='*80}")
             print(f"{circuit_name.upper()} - AGGREGATED METRICS (n={n_trials})")
@@ -277,14 +281,14 @@ def main():
             print(f"Time:   {aggregated['avg_time_seconds']:.1f}±{aggregated['std_time_seconds']:.1f}s")
             print(f"SR%:    {aggregated['success_rate_percent']:.1f}%")
             print(f"{'='*80}\n")
-            
+
             # Save per-circuit aggregated results
             aggregated_file = f"{original_results_dir}_aggregated_metrics.json"
             with open(aggregated_file, 'w') as f:
                 json.dump(aggregated, f, indent=2)
-            
+
             print(f"{circuit_name} aggregated results saved to: {aggregated_file}\n")
-            
+
             all_circuit_results[circuit_name] = {
                 "status": "SUCCESS",
                 "metrics": aggregated,
@@ -299,11 +303,11 @@ def main():
                 "trials": trial_results,
                 "timestamp": datetime.now().isoformat()
             }
-        
+
         # Save global summary after each circuit
         save_global_summary(all_circuit_results, global_summary_file)
         print(f"{circuit_name} results saved to global summary\n")
-    
+
     # ========================================================================
     # FINAL SUMMARY TABLE
     # ========================================================================
@@ -312,7 +316,7 @@ def main():
     print(f"{'='*80}")
     print(f"{'Circuit':<20} {'FOM':<18} {'Evals':<18} {'Time(s)':<18} {'SR%':<10}")
     print(f"{'-'*80}")
-    
+
     for circuit_name, result in all_circuit_results.items():
         if result['status'] == 'SUCCESS' and 'metrics' in result:
             m = result['metrics']
@@ -324,7 +328,7 @@ def main():
         else:
             status = result.get('status', 'UNKNOWN')
             print(f"{circuit_name:<20} {status}")
-    
+
     print(f"{'='*80}\n")
     print(f"ALL CIRCUITS COMPLETED\n")
 

@@ -28,8 +28,8 @@ from prompts import (
     parameter_tuning_section,
     response_format_section,
 )
-from problem_agent_test import CIRCUIT_UNDERSTANDING_PROMPT, SEARCH_SPACE_REDUCTION_PROMPT, CIRCUIT_REUNDERSTANDING_PROMPT
-from utils.feedback_extraction import (extract_optimization_feedback, save_feedback_json, 
+from problem_agent import CIRCUIT_UNDERSTANDING_PROMPT, SEARCH_SPACE_REDUCTION_PROMPT, CIRCUIT_REUNDERSTANDING_PROMPT
+from utils.feedback_extraction import (extract_optimization_feedback, save_feedback_json,
                                       prepare_format_params, extract_useful_section, check_user_specs_met)
 
 NAME_ALIASES = {
@@ -39,20 +39,20 @@ NAME_ALIASES = {
 
 # def parse_llm_json_response(llm_response):
 #     """Parse JSON from LLM response"""
-    
+
 #     text = llm_response.text.strip()
 #     text = re.sub(r'```(?:json)?\s*', '', text).strip()
-    
+
 #     # Extract JSON
 #     start = text.find('{')
 #     end = text.rfind('}')
 #     if start == -1 or end == -1:
 #         raise ValueError("No JSON object found")
 #     text = text[start:end+1]
-    
+
 #     # Fix trailing commas
 #     text = re.sub(r',(\s*[}\]])', r'\1', text)
-    
+
 #     try:
 #         return json.loads(text)
 #     except json.JSONDecodeError as e:
@@ -62,99 +62,99 @@ NAME_ALIASES = {
 
 # def parse_llm_json_response(llm_response):
 #     """Parse JSON from LLM response with aggressive cleaning"""
-    
+
 #     text = llm_response.text.strip()
 #     text = re.sub(r'```(?:json)?\s*', '', text).strip()
-    
+
 #     # Extract JSON
 #     start = text.find('{')
 #     end = text.rfind('}')
 #     if start == -1 or end == -1:
 #         raise ValueError("No JSON object found")
 #     text = text[start:end+1]
-    
+
 #     # AGGRESSIVE FIXES:
 #     # 1. Remove trailing commas
 #     text = re.sub(r',(\s*[}\]])', r'\1', text)
-    
+
 #     # 2. Remove comments
 #     text = re.sub(r'//.*?\n', '\n', text)
 #     text = re.sub(r'/\*.*?\*/', '', text, flags=re.DOTALL)
-    
+
 #     # 3. Fix common issues with rationale/explanation fields
 #     # Replace newlines in string values with spaces
 #     text = re.sub(r'"\s*\n\s*', '" ', text)
-    
+
 #     # 4. Try to fix unescaped quotes in strings (naive approach)
 #     # This is tricky - skip for now
-    
+
 #     try:
 #         return json.loads(text)
 #     except json.JSONDecodeError as e:
 #         # Enhanced error output
 #         print(f"\nJSON Error: {e.msg} at position {e.pos} (line {e.lineno}, col {e.colno})")
-        
+
 #         # Show context
 #         start = max(0, e.pos - 150)
 #         end = min(len(text), e.pos + 150)
 #         print(f"\nContext around error:")
 #         print(text[start:e.pos] + " <<<ERROR>>> " + text[e.pos:end])
-        
+
 #         print(f"\nFirst 1000 chars of JSON:")
 #         print(text[:1000])
-        
+
 #         raise
 
 # def parse_llm_json_response(llm_response):
 #     """Parse JSON from LLM response with aggressive cleaning"""
-    
+
 #     text = llm_response.text.strip()
 #     text = re.sub(r'```(?:json)?\s*', '', text).strip()
-    
+
 #     # Extract JSON
 #     start = text.find('{')
 #     end = text.rfind('}')
 #     if start == -1 or end == -1:
 #         raise ValueError("No JSON object found")
 #     text = text[start:end+1]
-    
+
 #     # AGGRESSIVE FIXES:
 #     # 1. Remove trailing commas
 #     text = re.sub(r',(\s*[}\]])', r'\1', text)
-    
+
 #     # 2. Remove comments
 #     text = re.sub(r'//.*?\n', '\n', text)
 #     text = re.sub(r'/\*.*?\*/', '', text, flags=re.DOTALL)
-    
+
 #     # 3. Fix common issues with rationale/explanation fields
 #     # Replace newlines in string values with spaces
 #     text = re.sub(r'"\s*\n\s*', '" ', text)
-    
+
 #     # 4. Try to fix unescaped quotes in strings (naive approach)
 #     # This is tricky - skip for now
-    
+
 #     try:
 #         return json.loads(text)
 #     except json.JSONDecodeError as e:
 #         # Enhanced error output
 #         print(f"\nJSON Error: {e.msg} at position {e.pos} (line {e.lineno}, col {e.colno})")
-        
+
 #         # Show context
 #         start_ctx = max(0, e.pos - 150)
 #         end_ctx = min(len(text), e.pos + 150)
 #         print(f"\nContext around error:")
 #         print(text[start_ctx:e.pos] + " <<<ERROR>>> " + text[e.pos:end_ctx])
-        
+
 #         print(f"\nFirst 1000 chars of JSON:")
 #         print(text[:1000])
-        
+
 #         # NEW: Handle incomplete string values by finding last complete field
 #         print("\nAttempting recovery from incomplete string...")
-        
+
 #         # Find the last complete key-value pair before the error
 #         # Look backwards for pattern: "key": "value",
 #         truncate_pos = e.pos
-        
+
 #         # Strategy 1: Find last comma before error
 #         last_comma = text.rfind(',', 0, e.pos)
 #         if last_comma > 0:
@@ -165,7 +165,7 @@ NAME_ALIASES = {
 #                 return json.loads(truncated)
 #             except json.JSONDecodeError:
 #                 pass
-        
+
 #         # Strategy 2: Find last complete closing quote before error
 #         # and remove the incomplete field
 #         last_quote = text.rfind('"', 0, e.pos - 1)
@@ -179,7 +179,7 @@ NAME_ALIASES = {
 #                     return json.loads(truncated)
 #                 except json.JSONDecodeError:
 #                     pass
-        
+
 #         # Strategy 3: Original truncation at last brace
 #         print("\nAttempting truncation at last closing brace...")
 #         last_brace = text.rfind('}', 0, e.pos)
@@ -190,12 +190,12 @@ NAME_ALIASES = {
 #                 return json.loads(truncated)
 #             except json.JSONDecodeError:
 #                 print("Truncation recovery failed")
-        
+
 #         raise
 
 def parse_llm_json_response(llm_response):
     """Parse JSON from LLM response with aggressive cleaning - handles multiple response types"""
-    
+
     # Handle different response types
     if isinstance(llm_response, str):
         text = llm_response
@@ -208,17 +208,17 @@ def parse_llm_json_response(llm_response):
         return llm_response
     else:
         raise ValueError(f"Unsupported response type: {type(llm_response)}")
-    
+
     text = text.strip()
-    
+
     # Remove markdown code blocks
     text = re.sub(r'```(?:json)?\s*', '', text).strip()
     text = re.sub(r'```\s*$', '', text).strip()
-    
+
     # Extract JSON object or array
     start = text.find('{')
     start_array = text.find('[')
-    
+
     # Determine if JSON object or array
     if start == -1 and start_array == -1:
         print("\n❌ No JSON object or array found in response")
@@ -227,7 +227,7 @@ def parse_llm_json_response(llm_response):
         print(text)
         print("=" * 80)
         raise ValueError("No JSON object or array found")
-    
+
     # Use whichever comes first
     if start == -1:
         start = start_array
@@ -267,43 +267,51 @@ def parse_llm_json_response(llm_response):
             # Try to salvage by adding closing bracket
             end = len(text) - 1
             text = text[start:end+1] + ']'
-    
+
     text = text[start:end+1]
-    
+
     # AGGRESSIVE FIXES:
+    # 0. Fix missing commas between JSON elements (common LLM omission)
+    text = re.sub(r'}\s*\{', '},{', text)        # } {  → },{
+    text = re.sub(r']\s*\{', '],{', text)        # ] {  → ],{
+    text = re.sub(r']\s*\[', '],[', text)        # ] [  → ],[
+    text = re.sub(r'"\s*\{', '",{', text)        # " {  → ",{  (value string before object)
+    text = re.sub(r'(?<=\})\s*"(?=\s*[a-zA-Z])', ', "', text)  # } "key" → }, "key"
+    text = re.sub(r'(?<=\])\s*"(?=\s*[a-zA-Z])', ', "', text)  # ] "key" → ], "key"
+
     # 1. Remove trailing commas
     text = re.sub(r',(\s*[}\]])', r'\1', text)
-    
+
     # 2. Remove comments
     text = re.sub(r'//.*?\n', '\n', text)
     text = re.sub(r'/\*.*?\*/', '', text, flags=re.DOTALL)
-    
+
     # 3. Fix common issues with rationale/explanation fields
     # Replace newlines in string values with spaces
     text = re.sub(r'"\s*\n\s*', '" ', text)
-    
+
     # 4. Fix unescaped newlines within strings (more aggressive)
     # Replace literal \n that aren't escaped
     text = re.sub(r'(?<!\\)\n(?=[^"]*"(?:[^"]*"[^"]*")*[^"]*$)', ' ', text)
-    
+
     try:
         return json.loads(text)
     except json.JSONDecodeError as e:
         # Enhanced error output
         print(f"\nJSON Error: {e.msg} at position {e.pos} (line {e.lineno}, col {e.colno})")
-        
+
         # Show context
         start_ctx = max(0, e.pos - 150)
         end_ctx = min(len(text), e.pos + 150)
         print(f"\nContext around error:")
         print(text[start_ctx:e.pos] + " <<<ERROR>>> " + text[e.pos:end_ctx])
-        
+
         print(f"\nFirst 1000 chars of JSON:")
         print(text[:1000])
-        
+
         # Recovery strategies
         print("\nAttempting recovery from incomplete/malformed JSON...")
-        
+
         # Strategy 1: Try to fix unterminated strings
         # Find if we're inside a string at error position
         quote_count = text[:e.pos].count('"') - text[:e.pos].count('\\"')
@@ -314,7 +322,7 @@ def parse_llm_json_response(llm_response):
             # Find the key this belongs to
             last_colon = text.rfind(':', 0, last_quote)
             last_comma = text.rfind(',', 0, last_colon)
-            
+
             if last_comma > 0:
                 # Remove the incomplete field
                 truncated = text[:last_comma].strip() + '\n}'
@@ -325,18 +333,18 @@ def parse_llm_json_response(llm_response):
                     return result
                 except json.JSONDecodeError:
                     pass
-        
+
         # Strategy 2: Find last comma before error
         last_comma = text.rfind(',', 0, e.pos)
         if last_comma > 0:
             # Count braces to determine how many to add
             open_braces = text[:last_comma].count('{') - text[:last_comma].count('}')
             open_brackets = text[:last_comma].count('[') - text[:last_comma].count(']')
-            
+
             truncated = text[:last_comma].strip()
             # Close all open structures
             truncated += '\n' + ']' * open_brackets + '}' * open_braces
-            
+
             try:
                 print(f"Attempting parse after truncating at position {last_comma}...")
                 result = json.loads(truncated)
@@ -344,24 +352,24 @@ def parse_llm_json_response(llm_response):
                 return result
             except json.JSONDecodeError as e2:
                 print(f"Truncation at comma failed: {e2.msg}")
-        
+
         # Strategy 3: Find last complete field (closing quote followed by comma or brace)
         pattern = r'"[^"]*"(?:\s*[:,\]\}])'
         matches = list(re.finditer(pattern, text[:e.pos]))
         if matches:
             last_match = matches[-1]
             end_pos = last_match.end()
-            
+
             # Check what follows
             if text[last_match.end()-1] == ',':
                 end_pos -= 1  # Don't include the comma
-            
+
             open_braces = text[:end_pos].count('{') - text[:end_pos].count('}')
             open_brackets = text[:end_pos].count('[') - text[:end_pos].count(']')
-            
+
             truncated = text[:end_pos].strip()
             truncated += '\n' + ']' * open_brackets + '}' * open_braces
-            
+
             try:
                 print(f"Attempting parse after last complete field...")
                 result = json.loads(truncated)
@@ -369,7 +377,7 @@ def parse_llm_json_response(llm_response):
                 return result
             except json.JSONDecodeError:
                 pass
-        
+
         # Strategy 4: Original truncation at last brace
         print("\nAttempting truncation at last closing brace...")
         last_brace = text.rfind('}', 0, e.pos)
@@ -381,7 +389,7 @@ def parse_llm_json_response(llm_response):
                 return result
             except json.JSONDecodeError:
                 print("Truncation recovery at brace failed")
-        
+
         # Strategy 5: Try to extract just the valid portion using regex
         print("\nAttempting to extract valid JSON using pattern matching...")
         # Match complete JSON objects
@@ -396,22 +404,22 @@ def parse_llm_json_response(llm_response):
                 return result
             except json.JSONDecodeError:
                 pass
-        
+
         print("\n❌ All recovery strategies failed")
         print("\nFull text being parsed:")
         print("=" * 80)
         print(text)
         print("=" * 80)
-        
+
         raise
 
 def extract_optimization_config(reduction_data):
     """
     Extract the optimization configuration in a format ready for Optuna.
-    
+
     Args:
         reduction_data: Parsed output from search space reduction LLM
-        
+
     Returns:
         dict: {
             'variables_to_optimize': {var_name: [list of values]},
@@ -419,42 +427,45 @@ def extract_optimization_config(reduction_data):
             'variable_info': {var_name: full info dict}
         }
     """
-    
+
+    # Safely get the nested dict with fallback (LLM JSON may be truncated)
+    opt_config = reduction_data.get('optimization_configuration', {})
+
     # Extract variables to optimize
     variables_to_optimize = {}
-    for var_name, var_info in reduction_data['optimization_configuration']['variables_to_optimize'].items():
-        variables_to_optimize[var_name] = var_info['search_space']
-    
-    # Extract fixed variables
+    for var_name, var_info in opt_config.get('variables_to_optimize', {}).items():
+        variables_to_optimize[var_name] = var_info.get('search_space', [])
+
+    # Extract fixed variables — default to empty if key is missing
     variables_fixed = {}
-    for var_name, var_info in reduction_data['optimization_configuration']['variables_fixed'].items():
+    for var_name, var_info in opt_config.get('variables_fixed', {}).items():
         variables_fixed[var_name] = var_info['fixed_value']
-    
+
     # Keep full info for reference
     variable_info = {
-        'to_optimize': reduction_data['optimization_configuration']['variables_to_optimize'],
-        'fixed': reduction_data['optimization_configuration']['variables_fixed']
+        'to_optimize': opt_config.get('variables_to_optimize', {}),
+        'fixed': opt_config.get('variables_fixed', {})
     }
-    
+
     num_combinations = 1
     for var_name, search_space in variables_to_optimize.items():
         num_combinations *= len(search_space)
-            
+
     return {
         'variables_to_optimize': variables_to_optimize,
         'variables_fixed': variables_fixed,
         'variable_info': variable_info,
-        'search_space_summary': reduction_data['search_space_summary'],
+        'search_space_summary': reduction_data.get('search_space_summary', {}),
         'num_combinations': num_combinations
     }
 
 class LLMOptimizationAgent:
     """LLM agent that guides the optimization process using Google Gemini with advanced methods"""
-    
-    def __init__(self, config, model: str = "gemini-2.5-flash", user_specs: str = None, num_variables_to_optimize: int = None):
+
+    def __init__(self, config, model: str = "gemini-3-flash-preview", user_specs: str = None, num_variables_to_optimize: int = None):
         """
         Initialize LLM agent with Google Gemini
-        
+
         Parameters:
         -----------
         api_key: str
@@ -467,8 +478,10 @@ class LLMOptimizationAgent:
 
         self.base_metric = self.config["base_metrics"]
         self.metrics = self.config["metrics"]
-        genai.configure(api_key=self.config["GOOGLE_API_KEY"])
-        
+        api_key_env = os.getenv("GOOGLE_API_KEY")
+        #genai.configure(api_key=self.config["GOOGLE_API_KEY"])
+        genai.configure(api_key=api_key_env)
+
         # Initialize model with configuration
         generation_config = {
             "temperature": 0.4,  # Slightly higher for more creative strategies 0.1
@@ -476,7 +489,7 @@ class LLMOptimizationAgent:
             "top_k": 20,
             "max_output_tokens": 16384,  #8192
         }
-        
+
         self.model = genai.GenerativeModel(
             model_name=model,
             generation_config=generation_config,
@@ -498,12 +511,12 @@ class LLMOptimizationAgent:
     # def _get_fom_metric(self):
     #     """
     #     Get FOM metric configuration from YAML
-        
+
     #     Returns a target_metric dict that matches the expected format
     #     """
     #     metric_post = self.config.get('metric_post', {})
     #     fom_config = metric_post.get('fom', {})
-        
+
     #     return {
     #         'metric_name': 'fom',
     #         'metric_key': 'fom',
@@ -516,44 +529,47 @@ class LLMOptimizationAgent:
     def _get_fom_metric(self):
         """
         Get FOM metric configuration from YAML, with auto-generation if needed
-        
+
         Priority:
         1. Try to auto-generate from user_specs_metric
         2. If auto-generation fails, fall back to YAML expr
         3. If both fail, use "1.0"
-        
+
         Returns a target_metric dict that matches the expected format
         """
         metric_post = self.config.get('metric_post', {})
         fom_config = metric_post.get('fom', {})
-        
+
         # Get original FOM expression from YAML (as fallback)
         yaml_expr = fom_config.get('expr', '').strip()
-        
+
         # ALWAYS try to auto-generate first
         user_specs_metric = self.config['user_specs_metric']
         fom_expr = None
-        
+
         if user_specs_metric:
             print(f"\n{'='*80}")
             print(f"FOM EXPRESSION AUTO-GENERATION")
             print(f"{'='*80}")
             print(f"Attempting to auto-generate FOM from user_specs_metric...")
             print(f"User specs: {user_specs_metric}")
-            
+
             fom_expr = self._auto_generate_fom_expression(user_specs_metric)
-            
+
             # Check if auto-generation succeeded
             if fom_expr and fom_expr != "FAILED":
                 print(f"✅ Generated FOM expression: {fom_expr}")
                 print(f"{'='*80}\n")
-                
+
                 # Update the config
                 if 'metric_post' not in self.config:
                     self.config['metric_post'] = {}
                 if 'fom' not in self.config['metric_post']:
                     self.config['metric_post']['fom'] = {}
                 self.config['metric_post']['fom']['expr'] = fom_expr
+                # Ensure fom is in the metrics list for simulation computation
+                if 'fom' not in self.config.get('metrics', []):
+                    self.config['metrics'].append('fom')
             else:
                 # Auto-generation failed, fall back to YAML
                 print(f"❌ Auto-generation failed")
@@ -572,7 +588,16 @@ class LLMOptimizationAgent:
             else:
                 fom_expr = "1.0"
                 print(f"[WARNING] No user_specs_metric and no YAML expression, using default FOM = 1.0")
-        
+
+        # Ensure fom is in config so it gets computed during simulation
+        if 'fom' not in self.config.get('metrics', []):
+            self.config['metrics'].append('fom')
+        if 'metric_post' not in self.config:
+            self.config['metric_post'] = {}
+        if 'fom' not in self.config['metric_post']:
+            self.config['metric_post']['fom'] = {}
+        self.config['metric_post']['fom']['expr'] = fom_expr
+
         return {
             'metric_name': 'fom',
             'metric_key': 'fom',
@@ -588,114 +613,114 @@ class LLMOptimizationAgent:
     # def _auto_generate_fom_expression(self, user_specs_metric: str) -> str:
     #     """
     #     Automatically generate normalized FOM expression from user specifications.
-        
+
     #     Returns "FAILED" if parsing fails, so caller can fall back to YAML expr.
-        
+
     #     Rules:
     #     - Metrics with '>' (maximize) go in numerator, normalized by threshold
     #     - Metrics with '<' (minimize) go in denominator, normalized by threshold
     #     - FOM metric itself is excluded
-        
+
     #     Parameters:
     #     -----------
     #     user_specs_metric: str
     #         User specification string with conditions
-        
+
     #     Returns:
     #     --------
     #     str: FOM expression, or "FAILED" if parsing failed
     #     """
     #     import re
-        
+
     #     # Handle empty input
     #     if not user_specs_metric or not user_specs_metric.strip():
     #         return "FAILED"
-        
+
     #     # Parse: metric_name > threshold or metric_name < threshold
     #     pattern = r'(\w+)\s*([<>])\s*([\d.eE+-]+)'
     #     matches = re.findall(pattern, user_specs_metric)
-        
+
     #     # If no matches, parsing failed
     #     if not matches:
     #         print(f"  Could not parse user_specs_metric (no matches found)")
     #         return "FAILED"
-        
+
     #     numerator_terms = []
     #     denominator_terms = []
     #     skipped = []
-        
+
     #     for metric_name, operator, threshold in matches:
     #         # Skip 'fom' itself
     #         if metric_name.lower() == 'fom':
     #             continue
-            
+
     #         try:
     #             threshold_float = float(threshold)
-                
+
     #             # Avoid division by zero
     #             if abs(threshold_float) < 1e-10:
     #                 skipped.append(f"{metric_name} (threshold={threshold}, too small)")
     #                 continue
-                
+
     #             if operator == '>':
     #                 # Maximize: numerator
     #                 numerator_terms.append(f"({metric_name}/{threshold_float})")
     #             elif operator == '<':
     #                 # Minimize: denominator
     #                 denominator_terms.append(f"({metric_name}/{threshold_float})")
-                    
+
     #         except ValueError:
     #             skipped.append(f"{metric_name} (invalid threshold: {threshold})")
     #             continue
-        
+
     #     # Report skipped metrics
     #     if skipped:
     #         print(f"  Skipped metrics: {', '.join(skipped)}")
-        
+
     #     # If no valid metrics found after parsing, fail
     #     if not numerator_terms and not denominator_terms:
     #         print(f"  No valid metrics found (all skipped or only 'fom' present)")
     #         return "FAILED"
-        
+
     #     # Build expression
     #     # Numerator
     #     numerator = " * ".join(numerator_terms) if numerator_terms else "1.0"
-        
+
     #     # Denominator
     #     if denominator_terms:
     #         denominator = " * ".join(denominator_terms)
     #         expression = f"({numerator}) / ({denominator})"
     #     else:
     #         expression = numerator
-        
+
     #     return expression
-        
+
 
     def _auto_generate_fom_expression(self, user_specs_metric: str) -> str:
         """Auto-generate FOM expression from user_specs_metric"""
         import re
-        
+
         if not user_specs_metric:
             return "FAILED"
-        
+
         pattern = r'(\w+)\s*([<>])\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)'
         matches = re.findall(pattern, user_specs_metric)
-        
+
         if not matches:
             return "FAILED"
-        
+
         numerator_terms = []
         denominator_terms = []
-        
+
         for metric_name, operator, threshold in matches:
             if metric_name.lower() == 'fom':
                 continue
-            
+
             try:
                 threshold_float = float(threshold)
                 if abs(threshold_float) < 1e-10:
                     continue
-                
+
                 if operator == '>':
                     # Maximize: metric should be > threshold
                     numerator_terms.append(f"({metric_name}/{abs(threshold_float)})")
@@ -712,18 +737,18 @@ class LLMOptimizationAgent:
                         denominator_terms.append(f"({metric_name}/{threshold_float})")
             except:
                 continue
-        
+
         if not numerator_terms and not denominator_terms:
             return "FAILED"
-        
+
         numerator = " * ".join(numerator_terms) if numerator_terms else "1.0"
-        
+
         if denominator_terms:
             denominator = " * ".join(denominator_terms)
             expression = f"({numerator}) / ({denominator})"
         else:
             expression = numerator
-        
+
         return expression
 
     def circuits_understanding(self):
@@ -739,26 +764,26 @@ class LLMOptimizationAgent:
             return name.replace("_", " ").title()
 
         METRIC_DESCRIPTIONS = {}
-        
+
         for metric, spec in self.config['metric_post'].items():
             # Base name
             label = NAME_ALIASES.get(metric, prettify_metric_name(metric))
-        
+
             # Add unit if present
             unit = spec.get("unit", "")
             if unit:
                 label = f"{label} ({unit})"
-        
+
             # Add expression if present
             if "expr" in spec:
                 label = f"{label} = {spec['expr']}"
-        
+
             METRIC_DESCRIPTIONS[metric] = label
-    
-        
+
+
         # Build the metrics list string
         METRICS_LIST = '\n'.join(f'- {METRIC_DESCRIPTIONS.get(m, m)} ({m})' for m in METRICS)
-        
+
         # Build the impact section
         IMPACT_SECTIONS = []
         for metric_key in METRICS:
@@ -769,13 +794,13 @@ class LLMOptimizationAgent:
                 f'Focus on which variables have the strongest impact on {metric_key} and why.'
             )
         IMPACT_SECTION_TEXT = "\n\n".join(IMPACT_SECTIONS)
-        
+
         # Build JSON structure for impact
         IMPACT_JSON_FIELDS = {}
         for metric_key in METRICS:
             metric_name = METRIC_DESCRIPTIONS.get(metric_key, metric_key)
             IMPACT_JSON_FIELDS[metric_key] = f"3-5 sentences explaining how optimization variables affect {metric_name}, focusing on which variables have strongest impact and why."
-        
+
         IMPACT_JSON_STR = json.dumps(IMPACT_JSON_FIELDS, indent=4)[1:-1]
 
         circuit_understanding_prompt = CIRCUIT_UNDERSTANDING_PROMPT.format(
@@ -798,28 +823,28 @@ class LLMOptimizationAgent:
 
         base_width_values = self.config['W_values']
         base_width_values_str = str(base_width_values)
-        
-        
+
+
         width_scales = self.config['width_scales']
-        
+
         # Calculate total number of variables
         total_num_variables = len(width_scales)
-        
+
         # Format width scales as string
         width_scales_lines = []
         for base_var, (actual_var, scale) in width_scales.items():
             width_scales_lines.append(f"  {actual_var} = {base_var} × {scale}")
         width_scales_str = '\n'.join(width_scales_lines)
-        
+
         # Extract variable impact summary from circuit_data
         variable_impact_lines = []
         for metric, impact_text in circuit_data['optimization_variables_impact'].items():
             variable_impact_lines.append(f"**{metric}:**\n{impact_text}")
         variable_impact_summary = '\n\n'.join(variable_impact_lines)
-        
+
         # Extract variable interactions
         variable_interactions = circuit_data['variable_interactions']
-        
+
         # Extract key insights
         key_insights_lines = []
         for i, insight in enumerate(circuit_data['key_insights_for_optimization'], 1):
@@ -848,27 +873,27 @@ class LLMOptimizationAgent:
 
     def search_space_generating_new(self, circuit_data):
         import json
-        
+
         # Get variables
         variables = self.config.get('variable', {})
         var_names = list(variables.keys())
-        
+
         # Check for scaling
         width_scales = self.config.get('width_scales', {})
         length_scales = self.config.get('length_scales', {})
         uses_scales = bool(width_scales or length_scales)
-        
+
         # Calculate total number of variables
         total_num_variables = len(var_names)
-        
+
         # Build variable ranges section
         variable_ranges_lines = []
-        
+
         if uses_scales:
             # VCO/SC pattern: Show base variables with generic ranges
             w_values = self.config.get('W_values', [])
             l_values = self.config.get('L_values', [])
-            
+
             if w_values:
                 variable_ranges_lines.append(f"- Base widths: {w_values} µm")
             if l_values:
@@ -877,7 +902,7 @@ class LLMOptimizationAgent:
             # Bandgap pattern: Show variable-specific ranges
             for var_name in var_names:
                 specific_key = f"{var_name}_values"
-                
+
                 if specific_key in self.config:
                     values = self.config[specific_key]
                     unit = "µm" if var_name.startswith(('W_', 'L_')) else ""
@@ -888,53 +913,53 @@ class LLMOptimizationAgent:
                 elif var_name.startswith('L_') and 'L_values' in self.config:
                     values = self.config['L_values']
                     variable_ranges_lines.append(f"- {var_name}: {values} µm (from L_values)")
-        
+
         variable_ranges = '\n'.join(variable_ranges_lines) if variable_ranges_lines else "Not specified"
-        
+
         # Build scaling rules section
         scaling_rules_lines = []
-        
+
         if width_scales:
             scaling_rules_lines.append("**Width Scaling:**")
             for scaled_name, scale_pair in width_scales.items():
                 if isinstance(scale_pair, (list, tuple)) and len(scale_pair) == 2:
                     base_var, factor = scale_pair
                     scaling_rules_lines.append(f"  {scaled_name} = {base_var} × {factor}")
-        
+
         if length_scales:
             scaling_rules_lines.append("**Length Scaling:**")
             for scaled_name, scale_pair in length_scales.items():
                 if isinstance(scale_pair, (list, tuple)) and len(scale_pair) == 2:
                     base_var, factor = scale_pair
                     scaling_rules_lines.append(f"  {scaled_name} = {base_var} × {factor}")
-        
+
         if not scaling_rules_lines:
             scaling_rules_lines.append("No scaling - direct optimization of variables")
-        
+
         scaling_rules = '\n'.join(scaling_rules_lines)
-        
+
         # Extract variable impact summary from circuit_data
         variable_impact_lines = []
         for metric, impact_text in circuit_data['optimization_variables_impact'].items():
             variable_impact_lines.append(f"**{metric}:**\n{impact_text}")
         variable_impact_summary = '\n\n'.join(variable_impact_lines)
-        
+
         # Extract variable interactions
         variable_interactions = circuit_data['variable_interactions']
-        
+
         # Extract key insights
         key_insights_lines = []
         for i, insight in enumerate(circuit_data['key_insights_for_optimization'], 1):
             key_insights_lines.append(f"{i}. {insight}")
         key_insights = '\n'.join(key_insights_lines)
-        
+
         # Format target_metric as human-readable string
         target_metric_str = f"""
     Metric: {self.target_metric.get('metric_name', 'Unknown')}
     Direction: {self.target_metric.get('direction', 'maximize')}
     Type: {self.target_metric.get('formulation_type', 'Unknown')}
     """
-        
+
         # Build the prompt
         search_space_reduction_prompt = SEARCH_SPACE_REDUCTION_PROMPT.format(
             subckt_name=self.config['subckt_name'],
@@ -947,47 +972,47 @@ class LLMOptimizationAgent:
             variable_interactions=variable_interactions,
             key_insights=key_insights
         )
-        
+
         search_space_response = self.model.generate_content(search_space_reduction_prompt)
-        
+
         # Parse JSON
         reduction_data = parse_llm_json_response(search_space_response)
         opt_config = extract_optimization_config(reduction_data)
-        
+
         return opt_config
 
 
     # def search_space_generating_new(self, circuit_data):
     #     import json
-        
+
     #     # W_values (always present)
     #     base_width_values = self.config.get('W_values', [])
     #     base_width_values_str = str(base_width_values) if base_width_values else "Not specified"
-        
+
     #     # L_values (optional - may not exist)
     #     base_length_values = self.config.get('L_values', None)
     #     if base_length_values:
     #         base_length_values_str = str(base_length_values)
     #     else:
     #         base_length_values_str = "Not applicable (lengths use W_values or are fixed)"
-        
+
     #     # width_scales (always present)
     #     width_scales = self.config.get('width_scales', {})
-        
+
     #     # length_scales (optional - may not exist)
     #     length_scales = self.config.get('length_scales', None)
-        
+
     #     # Calculate total number of variables
     #     total_num_variables = len(width_scales)
     #     if length_scales:
     #         total_num_variables += len(length_scales)
-        
+
     #     # Format width scales as string
     #     width_scales_lines = []
     #     for base_var, (actual_var, scale) in width_scales.items():
     #         width_scales_lines.append(f"  {actual_var} = {base_var} × {scale}")
     #     width_scales_str = '\n'.join(width_scales_lines) if width_scales_lines else "Not specified"
-        
+
     #     # Format length scales as string (only if exists)
     #     if length_scales and isinstance(length_scales, dict) and len(length_scales) > 0:
     #         length_scales_lines = []
@@ -996,29 +1021,29 @@ class LLMOptimizationAgent:
     #         length_scales_str = '\n'.join(length_scales_lines)
     #     else:
     #         length_scales_str = "Not applicable (no separate length_scales defined)"
-        
+
     #     # Extract variable impact summary from circuit_data
     #     variable_impact_lines = []
     #     for metric, impact_text in circuit_data['optimization_variables_impact'].items():
     #         variable_impact_lines.append(f"**{metric}:**\n{impact_text}")
     #     variable_impact_summary = '\n\n'.join(variable_impact_lines)
-        
+
     #     # Extract variable interactions
     #     variable_interactions = circuit_data['variable_interactions']
-        
+
     #     # Extract key insights
     #     key_insights_lines = []
     #     for i, insight in enumerate(circuit_data['key_insights_for_optimization'], 1):
     #         key_insights_lines.append(f"{i}. {insight}")
     #     key_insights = '\n'.join(key_insights_lines)
-        
+
     #     # FIX: Format target_metric as human-readable string instead of JSON
     #     target_metric_str = f"""
     # Metric: {self.target_metric.get('metric_name', 'Unknown')}
     # Direction: {self.target_metric.get('direction', 'maximize')}
     # Type: {self.target_metric.get('formulation_type', 'Unknown')}
     # """
-        
+
     #     search_space_reduction_prompt = SEARCH_SPACE_REDUCTION_PROMPT.format(
     #         subckt_name=self.config['subckt_name'],
     #         target_metric=target_metric_str.strip(),  # Use plain text description
@@ -1032,13 +1057,13 @@ class LLMOptimizationAgent:
     #         variable_interactions=variable_interactions,
     #         key_insights=key_insights
     #     )
-        
+
     #     search_space_response = self.model.generate_content(search_space_reduction_prompt)
-        
+
     #     # Parse JSON
     #     reduction_data = parse_llm_json_response(search_space_response)
     #     opt_config = extract_optimization_config(reduction_data)
-        
+
     #     return opt_config
 
     def llm_regenerating_searchspace(self, feedback_dict, current_config, netlist, original_config):
@@ -1064,29 +1089,29 @@ class LLMOptimizationAgent:
         opt_config = extract_optimization_config(reduction_data)
 
         return opt_config
-        
+
 
     def _llm_select_objective(self, user_specs: str) -> Dict:
-        
-        
+
+
         """LLM selects the best objective function from candidates"""
 
         available_metrics = list(self.config["metrics"])
         prompt = objective_selection_prompt(user_specs, available_metrics)
-        
+
         response = self.model.generate_content(prompt)
         json_text = response.text.strip()
         if "```json" in json_text:
             json_text = json_text.split("```json")[1].split("```")[0].strip()
-        
+
         decision = json.loads(json_text)
-        
+
         print(f"\n LLM-Selected Objective Function:")
         print(f"   Formula: {decision['objective_function']}")
         print(f"   Type: {decision['formulation']['type']}")
         print(f"   Reasoning: {decision['reasoning']}")
         print(f"   Expected Behavior: {decision['expected_behavior']}")
-        
+
         return decision
 
     # def _extract_metric_info(self, target_metric: Dict) -> Dict:
@@ -1103,7 +1128,7 @@ class LLMOptimizationAgent:
     def _extract_metric_info(self, target_metric: Dict) -> Dict:
         """Extract and organize metric information - always returns FOM info"""
         fom_config = self.config.get('metric_post', {}).get('fom', {})
-        
+
         return {
             'name': 'FOM',
             'key': 'fom',
@@ -1116,45 +1141,45 @@ class LLMOptimizationAgent:
     def decide_next_iteration(self, optimization_state: Dict, user_specs: str) -> Dict:
         """llm_prompt_debug
         LLM decides the next iteration strategy
-        
+
         Returns dict with:
         - 'action': 'search' or 'stop'
         - 'method': search method name
         - 'n_samples': number of designs to search
         - 'reasoning': explanation of decision
         """
-        
+
         prompt = self._build_decision_prompt(optimization_state, user_specs)
         # DEBUG: Save prompt to file
         debug_path = os.path.join(self.config['results_dir'], 'llm_prompt_debug.txt')
-        
+
         with open(debug_path, 'w') as f:
             f.write(prompt)
         print(" Saved LLM prompt to llm_prompt_debug.txt")
 
         # Extract the useful information from the history and Save in memory for feedback
         info_saved_memory = extract_useful_section(prompt)
-        memory_path = os.path.join(self.config['results_dir'], 'optmizaiton_history_memory.txt')
+        memory_path = os.path.join(self.config['results_dir'], 'optimization_history_memory.txt')
 
 
         with open(memory_path, 'w') as f:
             f.write(info_saved_memory)
         print(" Saved state memory to memory.txt")
-        
+
         # Generate response using Gemini
         response = self.model.generate_content(prompt)
-        
+
         # Parse LLM response
         response_text = response.text
         decision = self._parse_llm_decision(response_text)
-        
+
         # Store in conversation history
         self.conversation_history.append({
             'prompt': prompt,
             'response': response_text,
             'decision': decision
         })
-        
+
         return decision
 
     def save_decision_log(self, filepath: Path):
@@ -1164,13 +1189,13 @@ class LLMOptimizationAgent:
 
     def build_available_metrics(self, metric_post: dict) -> str:
         lines = []
-    
+
         for metric, spec in metric_post.items():
             name = NAME_ALIASES.get(metric, metric.replace("_", " ").title())
-    
+
             unit = spec.get("unit", "")
             expr = spec.get("expr")
-    
+
             if expr:
                 if unit:
                     line = f"- {name}: {expr}"
@@ -1181,19 +1206,19 @@ class LLMOptimizationAgent:
                     line = f"- {name} ({unit})"
                 else:
                     line = f"- {name}"
-    
+
             lines.append(line)
-    
+
         return "\n".join(lines)
 
-    
+
 
     def _build_header_section(self, user_specs: str, metric_info: Dict) -> str:
         """Build the header section with user specs and goals"""
         available_metrics_text = self.build_available_metrics(self.config['metric_post'])
         return header_section(user_specs, metric_info, available_metrics_text)
 
-    def _build_best_achieved_section(self, best_value: float, best_iter: int, 
+    def _build_best_achieved_section(self, best_value: float, best_iter: int,
                                      metric_info: Dict) -> str:
         """Build section showing best achieved value"""
         if best_value != float('-inf') and best_value != float('inf'):
@@ -1202,73 +1227,73 @@ class LLMOptimizationAgent:
             name = metric_info['name']
             return f"\n **Best post-PEX {name} achieved: {best_value:{fmt}} {unit} (Iteration {best_iter})**"
         return ""
-    
-    
-    def _build_trend_analysis_section(self, post_pex_values: list, state: Dict, 
+
+
+    def _build_trend_analysis_section(self, post_pex_values: list, state: Dict,
                                       metric_info: Dict) -> str:
         """Build trend analysis section"""
         if len(post_pex_values) < 2:
             return ""
-        
+
         lines = [f"\n###  Trend Analysis (Post-PEX {metric_info['name']})"]
-        
+
         # Format value history
         formatted_values = [f"{v:{metric_info['format']}}" for v in post_pex_values]
         lines.append(f"- Post-PEX {metric_info['name']} history: {formatted_values} {metric_info['unit']}")
-        
+
         # Analyze recent improvements
         recent_values = post_pex_values[-3:] if len(post_pex_values) >= 3 else post_pex_values
         if len(recent_values) >= 2:
             lines.extend(self._analyze_recent_improvements(recent_values, metric_info))
-        
+
         # Add method effectiveness
         recent_methods = [
-            state['iterations'][i].get('method', 'unknown') 
+            state['iterations'][i].get('method', 'unknown')
             for i in range(-min(3, len(state['iterations'])), 0)
         ]
         lines.append(f"- Recent methods used: {recent_methods}")
-        
+
         return "\n".join(lines)
-        
+
 
     def _build_iteration_history_section(self, state: Dict, metric_info: Dict) -> str:
         """Build the iteration history section with detailed results"""
         if not state['iterations']:
             return ""
-        
+
         sections = [
             f"### Previous Iterations ( Post-PEX {metric_info['name']} is the real metric!)",
             ""
         ]
-        
+
         best_value, best_iter = self._initialize_best_tracking(metric_info['direction'])
         post_pex_values = []
-        
+
         # Process each iteration
         for iter_data in state['iterations']:
             iter_summary = self._build_iteration_summary(
                 iter_data, metric_info, best_value, best_iter
             )
             sections.append(iter_summary)
-            
+
             # Update tracking
             if 'best_design_post_pex' in iter_data:
                 post_value = self._get_metric_value(
-                    iter_data['best_design_post_pex'], 
+                    iter_data['best_design_post_pex'],
                     metric_info
                 )
                 if post_value is not None:
                     post_pex_values.append(post_value)
                     best_value, best_iter = self._update_best_tracking(
-                        post_value, iter_data['iteration'], 
+                        post_value, iter_data['iteration'],
                         best_value, best_iter, metric_info['direction']
                     )
-        
+
         # Add summary sections
         sections.append(self._build_best_achieved_section(best_value, best_iter, metric_info))
         sections.append(self._add_statistical_analysis(state))
         sections.append(self._build_trend_analysis_section(post_pex_values, state, metric_info))
-        
+
         return "\n".join(sections)
 
     # def _build_current_state_section(self, state: Dict) -> str:
@@ -1278,13 +1303,13 @@ class LLMOptimizationAgent:
     #     num_var = state['num_var']
     #     budget_status = self._get_budget_status(total_designs)
     #     total_combinations = len(state['W_values']) ** num_var
-        
+
     #     return f"""## CURRENT STATE
     #     ### Search Space
     #     - Width values: {state['W_values']} µm
     #     - Total possible combinations: {len(state['W_values'])}^{num_var} = {total_combinations}
     #     - Length: {state['L']} µm
-        
+
     #     ### Budget and Progress
     #     - **Total designs searched: {total_designs}**
     #     - **Iterations completed: {state['num_iterations']}**
@@ -1295,24 +1320,24 @@ class LLMOptimizationAgent:
         total_designs = state['total_designs_searched']
         num_var = state['num_var']
         budget_status = self._get_budget_status(total_designs)
-        
+
         # Get variable names from config
         variables = self.config.get('variable', {})
         var_names = list(variables.keys())
-        
+
         # Check if using scales (VCO/SC pattern)
         width_scales = self.config.get('width_scales', {})
         length_scales = self.config.get('length_scales', {})
         uses_scales = bool(width_scales or length_scales)
-        
+
         # Build variable-specific ranges display
         var_info_lines = []
         total_combinations = 1
-        
+
         if uses_scales:
             # VCO/SC pattern: Show scaled variables, not _base
             displayed_vars = set()
-            
+
             # Add width-scaled variables
             for scaled_name, scale_pair in width_scales.items():
                 if isinstance(scale_pair, (list, tuple)) and len(scale_pair) == 2:
@@ -1326,11 +1351,11 @@ class LLMOptimizationAgent:
                             values = self.config['W_values']
                         else:
                             continue
-                        
+
                         var_info_lines.append(f"- {scaled_name}: {values} ({len(values)} values)")
                         total_combinations *= len(values)
                         displayed_vars.add(base_var)
-            
+
             # Add length-scaled variables
             for scaled_name, scale_pair in length_scales.items():
                 if isinstance(scale_pair, (list, tuple)) and len(scale_pair) == 2:
@@ -1344,11 +1369,11 @@ class LLMOptimizationAgent:
                             values = self.config['L_values']
                         else:
                             continue
-                        
+
                         var_info_lines.append(f"- {scaled_name}: {values} ({len(values)} values)")
                         total_combinations *= len(values)
                         displayed_vars.add(base_var)
-            
+
             # Add any remaining _base variables that weren't scaled
             for var_name in var_names:
                 if var_name not in displayed_vars:
@@ -1357,49 +1382,122 @@ class LLMOptimizationAgent:
                         values = self.config[specific_key]
                         var_info_lines.append(f"- {var_name}: {values} ({len(values)} values)")
                         total_combinations *= len(values)
-        
+
         else:
             # Bandgap pattern: Direct variables without scales
             for var_name in var_names:
                 # Check for variable-specific values first
                 specific_key = f"{var_name}_values"
-                
+
                 if specific_key in self.config:
                     # Variable-specific range exists
                     values = self.config[specific_key]
                     var_info_lines.append(f"- {var_name}: {values} ({len(values)} values)")
                     total_combinations *= len(values)
-                
+
                 elif var_name.startswith('W_') and 'W_values' in self.config:
                     # Fallback to generic W_values
                     values = self.config['W_values']
                     var_info_lines.append(f"- {var_name}: {values} (from W_values, {len(values)} values)")
                     total_combinations *= len(values)
-                
+
                 elif var_name.startswith('L_') and 'L_values' in self.config:
                     # Fallback to generic L_values
                     values = self.config['L_values']
                     var_info_lines.append(f"- {var_name}: {values} (from L_values, {len(values)} values)")
                     total_combinations *= len(values)
-                
+
                 else:
                     # No range found
                     var_info_lines.append(f"- {var_name}: No range defined")
-        
+
         # Build search space section
         search_space_lines = ["### Search Space"]
         search_space_lines.extend(var_info_lines)
         search_space_lines.append(f"- **Total possible combinations: {total_combinations:,}**")
-        
+
         search_space_section = '\n'.join(search_space_lines)
-        
+
+        lhs_runs = state.get('lhs_count', 0)
+        lhs_info = f"  (LHS runs: {lhs_runs}/2)" if lhs_runs > 0 else ""
+
         return f"""## CURRENT STATE
         {search_space_section}
-        
+
         ### Budget and Progress
         - **Total designs searched: {total_designs}**
-        - **Iterations completed: {state['num_iterations']}**
+        - **Iterations completed: {state['num_iterations']}{lhs_info}**
         - **Budget status**: {budget_status}"""
+
+    def _build_constraint_overview_section(self, state: Dict) -> str:
+        """Build a per-constraint best-values overview across all designs.
+
+        Shows the LLM the best value achieved for each individual constraint
+        vs its target, aggregated across ALL designs searched so far.
+        No new LLM call needed — data is embedded in the existing state report.
+        """
+        user_specs = self.config.get('user_specs_metric', '')
+        if not user_specs:
+            return ""
+
+        # Parse constraints from user_specs_metric
+        import re
+        constraints = []
+        for m, op, t_str in re.findall(r'(\w+)\s*([<>=]+)\s*([\d.e+-]+)', user_specs):
+            if m.lower() == 'fom':
+                constraints.append(('fom', op, float(t_str)))
+            else:
+                constraints.append((m, op, float(t_str)))
+
+        if not constraints:
+            return ""
+
+        # Collect all designs from iteration history
+        all_designs = []
+        for iter_data in state.get('iterations', []):
+            all_designs.extend(iter_data.get('all_designs', []))
+
+        if not all_designs:
+            return ""
+
+        lines = ["### Constraint Feasibility Overview (best values across all designs)"]
+        max_violation = 0
+
+        for metric, op, target in constraints:
+            # Find the best value for this metric
+            best_val = -float('inf') if op == '>' else float('inf')
+            for d in all_designs:
+                v = d.get(metric)
+                if v is not None:
+                    if op == '>' and v > best_val:
+                        best_val = v
+                    elif op == '<' and v < best_val:
+                        best_val = v
+
+            if best_val == -float('inf') or best_val == float('inf'):
+                lines.append(f"- {metric}: NO DATA")
+                continue
+
+            # Compute % of target
+            if op == '>':
+                pct = (best_val / target) * 100 if target != 0 else 0
+                status = '✓ MET' if best_val > target else f'{pct:.1f}% of target'
+            elif op == '<':
+                pct = (target / max(best_val, 1e-12)) * 100 if best_val > 0 else 0
+                status = '✓ MET' if best_val < target else f'over by {(best_val/target - 1)*100:.1f}%'
+            else:
+                pct = 100
+                status = '?'
+
+            lines.append(f"- {metric}: best={best_val:.4g} vs target {op} {target}  ({status})")
+
+            # Track worst constraint for viability assessment
+            if op == '>' and best_val < target:
+                max_violation = max(max_violation, (target - best_val) / abs(target))
+            elif op == '<' and best_val > target:
+                max_violation = max(max_violation, (best_val - target) / abs(target))
+
+        return '\n'.join(lines)
 
 
     def _build_methods_section(self, metric_info: Dict) -> str:
@@ -1409,12 +1507,12 @@ class LLMOptimizationAgent:
     def _build_decision_framework_section(self, metric_info: Dict) -> str:
         """Build the decision framework section"""
         return decision_framework_section(metric_info)
-    
+
     def _build_parameter_tuning_section(self) -> str:
         """Build the algorithm parameter tuning section"""
         return parameter_tuning_section()
-    
-    
+
+
     def _build_response_format_section(self) -> str:
 
         """Build the response format section with JSON template"""
@@ -1422,7 +1520,7 @@ class LLMOptimizationAgent:
 
     def _build_decision_prompt(self, state: Dict, user_specs: str) -> str:
         """Build prompt for LLM with current optimization state and advanced methods"""
-        
+
         # Extract target metric
         target_metric = self.target_metric
         metric_info = self._extract_metric_info(target_metric)
@@ -1430,16 +1528,22 @@ class LLMOptimizationAgent:
 
 
             # Build prompt sections
+        constraint_overview = self._build_constraint_overview_section(state)
+
         prompt_parts = [
             self._build_header_section(user_specs, metric_info),
             self._build_current_state_section(state),
             self._build_iteration_history_section(state, metric_info),
+        ]
+        if constraint_overview:
+            prompt_parts.append(constraint_overview)
+        prompt_parts.extend([
             self._build_methods_section(metric_info),
             self._build_decision_framework_section(metric_info),
             self._build_parameter_tuning_section(),
             self._build_response_format_section()
-        ]
-        
+        ])
+
         return "\n\n".join(prompt_parts)
 
 
@@ -1450,27 +1554,27 @@ class LLMOptimizationAgent:
             decision = json.loads(json_text)
             self._validate_decision(decision)
             return decision
-            
+
         except Exception as e:
             print(f" Warning: Failed to parse LLM response: {e}")
             print(f"Response preview: {response_text[:300]}...")
             return self._create_fallback_decision(e)
-        
+
 
     def _convert_decision_to_target_metric(self, decision: Dict) -> Dict:
         """Convert LLM decision to target_metric format"""
         formulation = decision.get('formulation', {})
         formulation_type = formulation.get('type', 'ratio')
-        
+
         # Define base metrics for single objectives
         base_metrics = self.base_metric
-        
-        
+
+
         # TYPE 1: CONSTRAINT - handles both single objective and constraint-based
         if formulation_type == 'constraint':
             primary_metric = formulation.get('primary_metric', 'gain_db')
             constraints = formulation.get('constraints', [])
-            
+
             # Get metric info from base_metrics
             metric_info = base_metrics.get(primary_metric, {
                 'name': primary_metric,
@@ -1478,10 +1582,10 @@ class LLMOptimizationAgent:
                 'format': '.3f',
                 'degradation_key': None
             })
-            
+
             # Single objective (no constraints) vs constraint-based
             is_single_objective = len(constraints) == 0
-            
+
             return {
                 'metric_name': metric_info['name'] if is_single_objective else decision.get('objective_function', 'Constrained'),
                 'metric_key': primary_metric,
@@ -1493,7 +1597,7 @@ class LLMOptimizationAgent:
                 'formulation_type': 'constraint',
                 'constraints': constraints
             }
-        
+
         # TYPE 2 & 3: RATIO / PRODUCT_RATIO
         elif formulation_type in ['ratio', 'product_ratio']:
             return {
@@ -1508,14 +1612,14 @@ class LLMOptimizationAgent:
                 'denominator_keys': formulation.get('denominator', []),
                 'formulation_type': formulation_type
             }
-        
+
         # TYPE 4: WEIGHTED COMBINATION
         elif formulation_type in ['weighted_combination']:
             weights = formulation.get('weights', {})
             if not isinstance(weights, dict) or len(weights) == 0:
                 raise ValueError(f"Invalid or missing weights for weighted_difference: {weights}")
-    
-            
+
+
             return {
                 'metric_name': decision.get('objective_function', 'Weighted Combination'),
                 'metric_key': 'composite',
@@ -1528,12 +1632,12 @@ class LLMOptimizationAgent:
                 'metrics': list(weights.keys()),
                 'formulation_type': 'weighted_difference'
             }
-        
+
         # TYPE 5: WEIGHTED PRODUCT
         elif formulation_type == 'weighted_product':
             numerator = formulation.get('numerator', ['gain_db'])
             denominator = formulation.get('denominator', ['power_uw'])
-            
+
             return {
                 'metric_name': decision.get('objective_function', 'Weighted Product'),
                 'metric_key': 'composite',
@@ -1548,7 +1652,7 @@ class LLMOptimizationAgent:
                 'numerator_exponents': formulation.get('numerator_exponents', [1.0] * len(numerator)),
                 'denominator_exponents': formulation.get('denominator_exponents', [1.0] * len(denominator))
             }
-        
+
         # FALLBACK
         else:
             print(f" Unknown formulation type: {formulation_type}, using FOM fallback")
@@ -1565,8 +1669,8 @@ class LLMOptimizationAgent:
             }
 
     # def _compute_composite_metric(self, design: Dict, target_metric: Dict) -> float:
-        
-        
+
+
     #     """Compute composite metric based on formulation type"""
 
 
@@ -1576,26 +1680,26 @@ class LLMOptimizationAgent:
 
     #     # Get metric names from config dynamically
     #     required_metrics = self.config["metrics"]
-    
+
     #     # Check for None or missing values
     #     for metric in required_metrics:
     #         if design.get(metric) is None:
     #             return 0.0
-            
+
 
     #     # Type 1 & 3: Simple Ratio or Product/Ratio
     #     if formulation_type in ['ratio', 'product_ratio']:
-            
+
     #         numerator = 1.0
     #         for key in target_metric.get('numerator_keys', []):
     #             numerator *= design.get(key, 1.0)
-            
+
     #         denominator = 1.0
     #         for key in target_metric.get('denominator_keys', []):
     #             denominator *= design.get(key, 1.0)
-            
+
     #         return numerator / denominator if denominator != 0 else 0
-        
+
     #     # Type 2: Weighted Difference
     #     elif formulation_type == 'weighted_difference':
     #         #print(f"      [DEBUG] Using weighted_difference branch")
@@ -1608,60 +1712,60 @@ class LLMOptimizationAgent:
     #             value += weight * metric_val
     #         #print(f"      [DEBUG] total value: {value}")
     #         return value
-        
+
     #     # Type 5: Constraint Satisfaction
     #     elif formulation_type == 'constraint':
- 
+
     #         primary_metric = target_metric.get('metric_key')
     #         constraints = target_metric.get('constraints', [])
-     
-            
+
+
     #         primary_value = design.get(primary_metric, 0.0)
     #         penalty = 0.0
-            
+
     #         for constraint in constraints:
     #             metric_value = design.get(constraint['metric'], float('inf'))
     #             threshold = constraint['threshold']
     #             operator = constraint['operator']
 
-                
+
     #             # Calculate penalty for constraint violation
     #             if operator == '<':
     #                 if metric_value >= threshold:
     #                     violation = metric_value - threshold
     #                     penalty += abs(primary_value) * 10.0 * (violation / threshold)  # Heavy penalty
-    
+
     #             elif operator == '>':
     #                 if metric_value <= threshold:
     #                     violation = threshold - metric_value
     #                     penalty += abs(primary_value) * 10.0 * (violation / threshold)
-        
-            
+
+
     #         result = primary_value - penalty
 
     #         return result
-        
+
     #     # Type 6: Weighted Product
     #     elif formulation_type == 'weighted_product':
     #         numerator = 1.0
     #         num_keys = target_metric.get('numerator_keys', [])
     #         num_exps = target_metric.get('numerator_exponents', [1.0] * len(num_keys))
 
-            
+
     #         for key, exp in zip(num_keys, num_exps):
     #             value = design.get(key, 1.0)
     #             numerator *= (value ** exp)
-            
+
     #         denominator = 1.0
     #         den_keys = target_metric.get('denominator_keys', [])
     #         den_exps = target_metric.get('denominator_exponents', [1.0] * len(den_keys))
-            
+
     #         for key, exp in zip(den_keys, den_exps):
     #             value = design.get(key, 1.0)
     #             denominator *= (value ** exp)
-            
+
     #         return numerator / denominator if denominator != 0 else 0
-        
+
 
     #     return design.get(target_metric.get('metric_key', 'fom'), 0.0)
 
@@ -1670,10 +1774,10 @@ class LLMOptimizationAgent:
         """Get FOM value from design"""
         return design.get('fom', 0)
 
-        
+
     def _add_statistical_analysis(self, state: Dict) -> str:
         """Generate statistical analysis of all designs to help LLM make better decisions"""
-        
+
         # HELPER FUNCTION - Add at the start
         def safe_format(val, decimals=2):
             """Safely format a value with decimals"""
@@ -1685,39 +1789,39 @@ class LLMOptimizationAgent:
                 return f"{float(val):.{decimals}f}"
             except:
                 return str(val)
-        
+
         analysis = "\n###  STATISTICAL ANALYSIS OF SEARCH RESULTS\n"
-    
+
         # Keep track of iterations we've already analyzed
         analyzed_iterations = set()
-        
+
         for iter_data in state['iterations']:
             iter_num = iter_data.get('iteration', 0)
             if 'all_designs' not in iter_data or not iter_data['all_designs'] or iter_num in analyzed_iterations:
                 continue
-                
+
             analyzed_iterations.add(iter_num)
-            
+
             method = iter_data.get('method', 'unknown').upper()
             designs = iter_data['all_designs']
-            
+
             # Calculate distribution statistics for FOM - FILTER OUT NONE VALUES
             values = [d.get('fom') for d in designs if d.get('fom') is not None]
-                
+
             if not values:
                 analysis += f"\n**Iteration {iter_num} [{method}]:** No valid FOM values found\n"
                 continue
-            
+
             # Basic statistics
             mean_val = sum(values) / len(values)
             median_val = sorted(values)[len(values) // 2]
             min_val = min(values)
             max_val = max(values)
             std_dev = self._std_dev(values)
-            
+
             # Parameter distribution analysis
             param_counts = {var: {} for var in self.var_names}
-            
+
             # Count parameter usage
             for d in designs:
                 for param in param_counts:
@@ -1727,7 +1831,7 @@ class LLMOptimizationAgent:
                             if value not in param_counts[param]:
                                 param_counts[param][value] = 0
                             param_counts[param][value] += 1
-            
+
             # Format the analysis
             analysis += f"\n**Iteration {iter_num} [{method}] Statistical Analysis:**\n"
             analysis += f"- Total designs: {len(designs)} ({len(values)} with valid FOM)\n"
@@ -1738,23 +1842,23 @@ class LLMOptimizationAgent:
             analysis += f"  - Max: {max_val:.4f}\n"
             analysis += f"  - Std Dev: {std_dev:.4f}\n"
             analysis += f"  - Coefficient of variation: {(std_dev/mean_val if mean_val > 0 else 0):.4f}\n"
-            
+
             # Calculate improvement percentiles
             percentiles = [10, 25, 50, 75, 90]
             sorted_vals = sorted(values, reverse=True)  # Always maximize FOM
             percentile_indices = [int(p/100 * len(sorted_vals)) for p in percentiles]
             percentile_values = [sorted_vals[min(i, len(sorted_vals)-1)] for i in percentile_indices]
-            
+
             analysis += f"- Performance percentiles:\n"
             for p, v in zip(percentiles, percentile_values):
                 analysis += f"  - {p}th percentile: {v:.4f}\n"
-            
+
             # Parameter distribution
             analysis += f"- Parameter distribution:\n"
             for param, counts in param_counts.items():
                 if counts:
                     analysis += f"  - {param} values: {counts}\n"
-                
+
             # Top 3 most common parameter values - FIXED LINE
             for param, counts in param_counts.items():
                 if counts:
@@ -1762,7 +1866,7 @@ class LLMOptimizationAgent:
                     top3 = sorted_counts[:3]
                     # FIX: Use safe_format instead of f'{v:.2f}'
                     analysis += f"  - Most common {param}: {[safe_format(v, 2) for v, c in top3]}\n"
-            
+
             # Exploration vs exploitation analysis
             if len(values) > 5:
                 # Exploration: high std dev / range
@@ -1770,21 +1874,21 @@ class LLMOptimizationAgent:
                 range_val = max_val - min_val
                 exploration_score = std_dev / range_val if range_val > 0 else 0
                 top_quartile = len([v for v in values if v >= percentile_values[3]]) / len(values)
-                
+
                 analysis += f"- Search behavior:\n"
                 analysis += f"  - Exploration score: {exploration_score:.2f}\n"
                 analysis += f"  - Exploitation score: {top_quartile:.2f}\n"
-                
+
                 if exploration_score > 0.3:
                     analysis += f"  - **High exploration** - diverse solutions found\n"
                 elif top_quartile > 0.4:
                     analysis += f"  - **High exploitation** - many solutions near optimum\n"
                 else:
                     analysis += f"  - **Balanced search** - good mix of exploration/exploitation\n"
-        
+
         return analysis
 
-    
+
 
     def _get_budget_status(self, total_designs: int) -> str:
         """Get budget status emoji and description"""
@@ -1802,23 +1906,23 @@ class LLMOptimizationAgent:
         else:
             return float('inf'), 0
 
-    def _update_best_tracking(self, current_value: float, current_iter: int, 
-                             best_value: float, best_iter: int, 
+    def _update_best_tracking(self, current_value: float, current_iter: int,
+                             best_value: float, best_iter: int,
                              direction: str) -> tuple:
         """Update best value tracking if current is better"""
-        is_better = (current_value > best_value if direction == 'maximize' 
+        is_better = (current_value > best_value if direction == 'maximize'
                      else current_value < best_value)
-        
+
         if is_better:
             return current_value, current_iter
         return best_value, best_iter
 
-    def _build_iteration_summary(self, iter_data: Dict, metric_info: Dict, 
+    def _build_iteration_summary(self, iter_data: Dict, metric_info: Dict,
                                  best_value: float, best_iter: int) -> str:
         """Build summary for a single iteration"""
         method = iter_data.get('method', 'unknown').upper()
-        parameters = iter_data.get('parameters', {}) 
-        
+        parameters = iter_data.get('parameters', {})
+
         lines = [
             f"\n**Iteration {iter_data['iteration']}** [{method}]:",
             f"- Designs searched: {iter_data['num_designs_searched']}"
@@ -1833,29 +1937,29 @@ class LLMOptimizationAgent:
                     param_lines.append(f"{k}={v}")
             if param_lines:
                 lines.append(f"- Algorithm parameters: {', '.join(param_lines)}")
-            
-        
+
+
         # Add pre-layout metrics
         lines.append(self._format_prelayout_metrics(iter_data, metric_info))
-        
+
         # Add post-PEX metrics
         if 'best_design_post_pex' in iter_data:
             lines.extend(self._format_postpex_metrics(iter_data, metric_info))
-        
+
         # Add design diversity
         if 'all_designs' in iter_data and iter_data['all_designs']:
             lines.append(self._format_top_designs(iter_data, metric_info))
         else:
             print(f"No designs found for iteration {iter_data['iteration']}")
-        
+
         return "\n".join(lines)
-    
+
 
     def _format_prelayout_metrics(self, iter_data: Dict, metric_info: Dict) -> str:
         """Format pre-layout metric value"""
         if metric_info['is_composite']:
             value = self._compute_composite_metric(
-                iter_data['best_design_pre_layout'], 
+                iter_data['best_design_pre_layout'],
                 self.target_metric
             )
             return f"- Pre-layout {metric_info['name']}: {value:{metric_info['format']}}"
@@ -1864,21 +1968,21 @@ class LLMOptimizationAgent:
             if isinstance(value, (int, float)):
                 return f"- Pre-layout {metric_info['name']}: {value:{metric_info['format']}} {metric_info['unit']}"
             return f"- Pre-layout {metric_info['name']}: {value}"
-    
-    
+
+
     def _format_postpex_metrics(self, iter_data: Dict, metric_info: Dict) -> list:
             """Format post-PEX metrics including degradation and design details"""
             lines = []
             post_design = iter_data['best_design_post_pex']
             post_value = self._get_metric_value(post_design, metric_info)
-            
+
             if post_value is not None:
                 # Format main metric with degradation if available
                 metric_line = self._format_postpex_value_with_degradation(
                     iter_data, post_value, metric_info
                 )
                 lines.append(metric_line)
-    
+
                 values = post_design.results if hasattr(post_design, "results") else post_design
                 # Add design parameters
                 lines.append(
@@ -1887,7 +1991,7 @@ class LLMOptimizationAgent:
                         for var in self.var_names
                     )
                 )
-                
+
                 # Add performance metrics
                 metrics = self.config["metric_post"]
                 lines.append(
@@ -1898,20 +2002,20 @@ class LLMOptimizationAgent:
                         if name in values
                     )
                 )
-            
+
             return lines
-    
-    
-    def _format_postpex_value_with_degradation(self, iter_data: Dict, 
-                                               post_value: float, 
+
+
+    def _format_postpex_value_with_degradation(self, iter_data: Dict,
+                                               post_value: float,
                                                metric_info: Dict) -> str:
         """Format post-PEX value with degradation percentage if available"""
         fmt = metric_info['format']
         unit = metric_info['unit']
         name = metric_info['name']
-        
+
         # Check for degradation data (only for non-composite metrics)
-        if (not metric_info['is_composite'] and 
+        if (not metric_info['is_composite'] and
             'degradation' in iter_data):
             degradation_key = self.target_metric.get('degradation_key', '')
             degradation = iter_data['degradation'].get(degradation_key, 0)
@@ -1919,8 +2023,8 @@ class LLMOptimizationAgent:
                     f"(degradation: {degradation:+.1f}%)")
         else:
             return f"-  **Post-PEX {name}: {post_value:{fmt}} {unit}**"
-    
-    
+
+
     def _format_top_designs(self, iter_data: Dict, metric_info: Dict) -> str:
 
         """Format top 5 designs from the iteration using config['metric_post'] formats/units."""
@@ -1929,11 +2033,11 @@ class LLMOptimizationAgent:
         # print(f"[DEBUG] 'all_designs' in iter_data? {'all_designs' in iter_data}")
         # print(f"[DEBUG] iter_data keys: {list(iter_data.keys())}")
         # print(f"Found {len(designs)} designs for iteration {iter_data['iteration']}")
-       
+
         if 'all_designs' not in iter_data:
             #print(f"[DEBUG] WARNING: No 'all_designs' key in iter_data!")
             return "\n  **No design data available**"
-        
+
         debug_designs_path = os.path.join(self.config['results_dir'], 'debug_designs.txt')
         with open(debug_designs_path, 'a') as f:
             f.write(f"\n{'='*80}\n")
@@ -1949,14 +2053,14 @@ class LLMOptimizationAgent:
             first_design = designs[0]
             #print(f"\nDEBUG first design keys: {list(first_design.keys())}")
             #print(f"DEBUG first design sample: {dict(list(first_design.items())[:8])}")
-    
+
         sorted_designs = self._sort_designs_by_metric(designs, metric_info)
         lines = [f"\n  **Top 5 designs found (by {metric_info['name']}) [Pre-layout rankings]:**"]
-    
+
         metrics = self.config["metric_post"]
-         
+
         #print(f"[DEBUG] self.config['metric_post'] keys: {list(metrics.keys())}")
-        
+
         # ADD THIS: Check first design values
         if designs:
             first = designs[0]
@@ -1964,25 +2068,25 @@ class LLMOptimizationAgent:
             for m in metrics:
                 val = first.get(m)
                 #print(f"[DEBUG]   {m} = {val} (type: {type(val).__name__})")
-    
+
         for i, design in enumerate(sorted_designs[:5], 1):
             values = design
 
             #if i == 1:  # Only debug first design
                 #print(f"[DEBUG] Design #{i} keys: {list(values.keys())}")
                 #print(f"[DEBUG] Design #{i} dc_gain_db: {values.get('dc_gain_db')}")
-    
+
             comp_val = self._get_metric_value(design, metric_info)
             if isinstance(comp_val, (int, float)):
                 comp_str = f"{metric_info['name']}={comp_val:{metric_info['format']}}"
             else:
                 comp_str = f"{metric_info['name']}={comp_val}"
-    
+
             params = ", ".join(
                 f"{var}={values.get(var):.2f}" if isinstance(values.get(var), (int, float)) else f"{var}=NA"
                 for var in self.var_names
             )
-    
+
             # Try to get metrics, but expect them to be NA for pre-layout
             perf_parts = []
             for m in metrics:
@@ -1997,18 +2101,39 @@ class LLMOptimizationAgent:
                         perf_parts.append(f"{m}=NA{metrics[m].get('unit', '')}")
                 else:
                     perf_parts.append(f"{m}=NA{metrics[m].get('unit', '')}")
-    
+
             perf = f" | {' '.join(perf_parts)}"
-    
+
+            # Add constraint satisfaction indicators [metric✓ metric✗ ...]
+            user_specs = self.config.get('user_specs_metric', '')
+            if user_specs:
+                import re
+                spec_indicators = []
+                for m, op, t_str in re.findall(r'(\w+)\s*([<>=]+)\s*([\d.e+-]+)', user_specs):
+                    if m.lower() == 'fom':
+                        continue
+                    target = float(t_str)
+                    actual = values.get(m)
+                    if actual is None:
+                        spec_indicators.append(f'{m}?')
+                    elif op == '>':
+                        spec_indicators.append(f'{m}{"✓" if actual > target else "✗"}')
+                    elif op == '<':
+                        spec_indicators.append(f'{m}{"✓" if actual < target else "✗"}')
+                    else:
+                        spec_indicators.append(f'{m}?')
+                if spec_indicators:
+                    perf += f" [{' '.join(spec_indicators)}]"
+
             lines.append(f"    {i}. {comp_str}  ({params}{perf})")
-    
+
         return "\n".join(lines)
-    
-    
+
+
     # def _sort_designs_by_metric(self, designs: list, metric_info: Dict) -> list:
     #     """Sort designs by target metric value"""
     #     reverse = (metric_info['direction'] == 'maximize')
-        
+
     #     if metric_info['is_composite']:
     #         return sorted(
     #             designs,
@@ -2026,10 +2151,10 @@ class LLMOptimizationAgent:
         """Sort designs by target metric value, filtering out None values"""
         if not designs:
             return []
-        
+
         reverse = (metric_info['direction'] == 'maximize')
         metric_key = metric_info.get('key', 'unknown')
-        
+
         # Filter out invalid designs
         valid_designs = []
         for design in designs:
@@ -2038,23 +2163,23 @@ class LLMOptimizationAgent:
                     value = self._compute_composite_metric(design, self.target_metric)
                 else:
                     value = design.get(metric_key)
-                
+
                 # Only keep designs with non-None values
                 if value is not None:
                     valid_designs.append(design)
             except Exception:
                 pass  # Skip designs that cause errors
-        
+
         # Check if we filtered anything
         if len(valid_designs) < len(designs):
             filtered_count = len(designs) - len(valid_designs)
             print(f"  ⚠️  Filtered {filtered_count}/{len(designs)} designs with invalid {metric_key}")
-        
+
         # If all designs are invalid, return empty list
         if not valid_designs:
             print(f"  ❌ All {len(designs)} designs have invalid {metric_key}")
             return []
-        
+
         # Sort valid designs only
         try:
             if metric_info['is_composite']:
@@ -2072,9 +2197,9 @@ class LLMOptimizationAgent:
         except Exception as e:
             print(f"  ❌ Error sorting designs: {e}")
             return valid_designs  # Return unsorted if sorting fails
-    
-    
-    
+
+
+
     def _get_metric_value(self, design: Dict, metric_info: Dict) -> float:
         """Extract metric value from design based on whether it's composite"""
         if metric_info['is_composite']:
@@ -2086,50 +2211,50 @@ class LLMOptimizationAgent:
         """Analyze improvement trends in recent iterations"""
         lines = []
         direction = metric_info['direction']
-        
+
         # Calculate improvement
         if direction == 'maximize':
             improvement = recent_values[-1] - recent_values[0]
         else:
             improvement = recent_values[0] - recent_values[-1]
-        
+
         improvement_pct = (improvement / abs(recent_values[0]) * 100) if recent_values[0] != 0 else 0
-        
+
         fmt = metric_info['format'][1:]  # Remove the dot
         lines.append(
             f"- Recent improvement: {improvement:+{fmt}} {metric_info['unit']} "
             f"({improvement_pct:+.1f}%)"
         )
-        
+
         # Convergence detection for 3 iterations
         if len(recent_values) == 3:
             convergence_status = self._detect_convergence(recent_values, direction)
             lines.append(convergence_status)
-        
+
         return lines
-        
-    
+
+
     def _detect_convergence(self, recent_values: list, direction: str) -> str:
         """Detect convergence based on recent improvement patterns"""
         if direction == 'maximize':
-            improvements = [recent_values[i+1] - recent_values[i] 
+            improvements = [recent_values[i+1] - recent_values[i]
                            for i in range(len(recent_values)-1)]
         else:
-            improvements = [recent_values[i] - recent_values[i+1] 
+            improvements = [recent_values[i] - recent_values[i+1]
                            for i in range(len(recent_values)-1)]
-        
+
         max_improvement_pct = (
             max(abs(imp) / abs(recent_values[0]) * 100 for imp in improvements)
             if recent_values[0] != 0 else 0
         )
-        
+
         if max_improvement_pct < 2:
             return " **STRONG CONVERGENCE**: Improvements < 2% - Consider STOPPING!"
         elif max_improvement_pct < 5:
             return " **CONVERGENCE DETECTED**: Improvements < 5%"
         else:
             return "**Still improving**: Improvements > 5%"
-    
+
 
     def _extract_json_from_response(self, response_text: str) -> str:
         """Extract JSON string from response text (handles markdown code blocks)"""
@@ -2138,50 +2263,50 @@ class LLMOptimizationAgent:
             json_start = response_text.find("```json") + 7
             json_end = response_text.find("```", json_start)
             return response_text[json_start:json_end].strip()
-        
+
         # Try generic markdown code block
         if "```" in response_text:
             json_start = response_text.find("```") + 3
             json_end = response_text.find("```", json_start)
             return response_text[json_start:json_end].strip()
-        
+
         # Try to find raw JSON object
         json_start = response_text.find("{")
         json_end = response_text.rfind("}") + 1
-        
+
         if json_start >= 0 and json_end > json_start:
             return response_text[json_start:json_end]
-        
+
         raise ValueError("No JSON found in response")
-    
-    
+
+
     def _validate_decision(self, decision: Dict):
         """Validate decision structure and values"""
         if decision['action'] not in ['search', 'stop']:
             raise ValueError(f"Invalid action: {decision['action']}")
-        
+
         if decision['action'] == 'search':
             self._validate_search_decision(decision)
-    
-    
+
+
     def _validate_search_decision(self, decision: Dict):
         """Validate search-specific decision fields"""
         valid_methods = [
-            'lhs', 'genetic', 'bayesian', 'optuna', 'adaptive', 
+            'lhs', 'genetic', 'bayesian', 'optuna', 'adaptive',
             'annealing', 'multistart', 'random', 'refined', 'grid'
         ]
-        
+
         if decision['method'] not in valid_methods:
             raise ValueError(f"Invalid method: {decision['method']}")
-        
+
         if not (5 <= decision['n_samples'] <= 50):
             raise ValueError(f"n_samples out of range: {decision['n_samples']}")
-        
+
         # Validate parameters if provided
         if 'parameters' in decision:
             self._validate_method_parameters(decision['method'], decision['parameters'])
-    
-    
+
+
     def _validate_method_parameters(self, method: str, parameters: Dict):
         """Validate method-specific parameters"""
         # Define valid parameter ranges for each method
@@ -2201,7 +2326,7 @@ class LLMOptimizationAgent:
                 'multivariate': [True, False],
                 'prior_weight': (0.5, 2.0)
             },
-            
+
             'annealing': {
                 'initial_temperature': (0.5, 3.0),
                 'cooling_rate': (0.8, 0.99)
@@ -2219,19 +2344,19 @@ class LLMOptimizationAgent:
                 'seed': (0, 1000000)
             }
         }
-        
+
         if method not in param_ranges:
             return  # No validation rules for this method
-        
+
         valid_params = param_ranges[method]
-        
+
         for param_name, param_value in parameters.items():
             if param_name not in valid_params:
                 print(f" Warning: Unknown parameter '{param_name}' for method '{method}'")
                 continue
-            
+
             expected = valid_params[param_name]
-            
+
             # Validate range for numeric parameters
             if isinstance(expected, tuple):
                 min_val, max_val = expected
@@ -2240,7 +2365,7 @@ class LLMOptimizationAgent:
                         f"Parameter '{param_name}' = {param_value} is out of range "
                         f"[{min_val}, {max_val}] for method '{method}'"
                     )
-            
+
             # Validate choice for string parameters
             elif isinstance(expected, list):
                 if param_value not in expected:
@@ -2248,8 +2373,8 @@ class LLMOptimizationAgent:
                         f"Parameter '{param_name}' = {param_value} is not valid. "
                         f"Expected one of {expected} for method '{method}'"
                     )
-    
-    
+
+
     def _create_fallback_decision(self, error: Exception) -> Dict:
         """Create intelligent fallback decision on parsing error"""
         return {
@@ -2265,7 +2390,7 @@ class LLMOptimizationAgent:
         }
 
     def _std_dev(self, values: List[float]) -> float:
-        
+
         """Calculate standard deviation"""
         if len(values) < 2:
             return 0.0
@@ -2275,14 +2400,14 @@ class LLMOptimizationAgent:
 
 
 # Integration with existing optimizer
-def run_llm_guided_optimization(config, max_total_designs: int = 250, 
-                                num_variables_to_optimize: int = 3, 
+def run_llm_guided_optimization(config, max_total_designs: int = 250,
+                                num_variables_to_optimize: int = 3,
                                 pre_layout_only: bool = False,
                                 max_regeneration_cycles: int = 2, plateau_patience: int = 2,
                                 trial_index: int = 0):
     """
     Main function to run LLM-guided optimization with advanced methods and search space reduction
-    
+
     Parameters:
     -----------
     config: dict or str
@@ -2296,21 +2421,21 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
     pre_layout_only: bool
         If True, optimize based on pre-layout only (skip ALIGN and post-PEX for speed)
     """
-    
+
     from iterative_ota_optimization import ControlledOTAOptimizer
 
     trial_start_time = time.time()
-    
+
     # Try to import advanced search methods
     try:
-        from advanced_search_methods_test import enhanced_generate_search_points
+        from advanced_search_methods import enhanced_generate_search_points
         has_advanced_methods = True
         print(" Advanced search methods loaded successfully")
     except ImportError:
         has_advanced_methods = False
         print("  Advanced search methods not found - using basic methods only")
         print("   To enable advanced methods, save advanced_search_methods.py in the same directory")
-    
+
     # Load config
     if isinstance(config, str):
         with open(config, "r") as f:
@@ -2319,7 +2444,7 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
     user_specs = config['user_specs']
 
     user_specs_metric = config['user_specs_metric']
-    
+
     # Initialize LLM agent
     print("\n" + "="*100)
     print("LLM-GUIDED OTA OPTIMIZATION WITH INTELLIGENT SEARCH SPACE REDUCTION")
@@ -2327,17 +2452,17 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
     print("Using AI agent to intelligently guide the optimization process")
     if has_advanced_methods:
         print("Advanced algorithms: LHS, Genetic, Bayesian, Adaptive, Annealing, Multi-start")
-    
+
     # Show mode
     if pre_layout_only:
         print(" Mode: PRE-LAYOUT OPTIMIZATION (Fast - ALIGN/Post-PEX skipped)")
     else:
         print(" Mode: FULL FLOW (Pre-layout → ALIGN → Post-PEX)")
-    
+
     print("="*100)
-    
+
     llm_agent = LLMOptimizationAgent(config=config, user_specs=user_specs, num_variables_to_optimize=num_variables_to_optimize)
-    
+
     # Extract target metric
     target_metric = llm_agent.target_metric
     print(f"Target Metric: {target_metric['metric_name']} ({target_metric['direction']})")
@@ -2352,7 +2477,7 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
         if specs_met:
             print(f"\n USER SPECIFICATIONS MET, skipping regeneration cycle {regeneration_cycle}")
             break
-        
+
         if regeneration_cycle == 0:
             print("\n" + "="*100)
             print("INITIAL SEARCH SPACE GENERATION")
@@ -2362,7 +2487,7 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
             print(f"SEARCH SPACE REGENERATION CYCLE {regeneration_cycle}")
             print("="*100)
             print("Re-analyzing search space based on optimization feedback...")
-    
+
         # ========================================================================
         # STEP 1: CIRCUIT UNDERSTANDING (LLM Analysis)
         # ========================================================================
@@ -2370,25 +2495,25 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
             print("\n" + "="*100)
             print("STEP 1: CIRCUIT UNDERSTANDING (LLM Analysis)")
             print("="*100)
-            
+
             print("Analyzing circuit topology and variable impacts...")
-            
+
             circuit_data = llm_agent.circuits_understanding()
-            
+
             if circuit_data:
                 print(" Circuit understanding complete!")
                 print(f"\n Analysis Summary:")
                 print(f"   • Circuit Overview: {circuit_data['circuit_topology_overview']}...")
                 print(f"   • Variables Analyzed: {len(circuit_data.get('optimization_variables_mapping', '').split('.'))}")
                 print(f"   • Key Insights: {len(circuit_data['key_insights_for_optimization'])}")
-                
+
                 print(f"\n Top Insights:")
                 for i, insight in enumerate(circuit_data['key_insights_for_optimization'], 1):
                     print(f"   {i}. {insight}")
             else:
                 print(" Circuit understanding failed, proceeding without search space reduction")
                 circuit_data = None
-    
+
         # ========================================================================
         # STEP 2: SEARCH SPACE REDUCTION (LLM Prioritization)
         # ========================================================================
@@ -2396,56 +2521,56 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
             print("\n" + "="*100)
             print("STEP 2: INTELLIGENT SEARCH SPACE REDUCTION (LLM Prioritization)")
             print("="*100)
-            
+
             if circuit_data:
                 print(f"Determining which {num_variables_to_optimize} variables to optimize...")
                 #optimization_config = llm_agent.search_space_generating(circuit_data)
                 optimization_config = llm_agent.search_space_generating_new(circuit_data)
 
-              
+
             else:
                 optimization_config = None
-    
+
         else:
             optimization_config = None
             # Regenerate search space based on feedback
             print("\n" + "="*100)
             print(f"STEP 2 (CYCLE {regeneration_cycle}): SEARCH SPACE REGENERATION")
             print("="*100)
-    
+
             #load the last iteration opt_config
             previous_config_path = os.path.join(config['results_dir'], f'opt_config_iter{regeneration_cycle-1}.json')
             with open(previous_config_path, 'r') as f:
                 previous_opt_config = json.load(f)
-            
-            source_path = os.path.join(config['results_dir'], 'optmizaiton_history_memory.txt')  #optmizaiton_history_memory  llm_prompt_debug
-            memory_path = os.path.join(config['results_dir'], f'optmizaiton_history_memory_iter{regeneration_cycle+1}.txt')
+
+            source_path = os.path.join(config['results_dir'], 'optimization_history_memory.txt')  #optimization_history_memory  llm_prompt_debug
+            memory_path = os.path.join(config['results_dir'], f'optimization_history_memory_iter{regeneration_cycle+1}.txt')
             shutil.copy(source_path, memory_path)
-            
+
             feedback = extract_optimization_feedback(memory_path)
             # print("="*80)
             # print("OPTIMIZATION FEEDBACK")
             # print("="*80)
             # pprint.pprint(feedback, width=100, compact=False)
             # print()
-    
-            optimization_config = llm_agent.llm_regenerating_searchspace(feedback_dict=feedback, 
-                                                                         current_config=previous_opt_config, 
+
+            optimization_config = llm_agent.llm_regenerating_searchspace(feedback_dict=feedback,
+                                                                         current_config=previous_opt_config,
                                                                          netlist=config['ota_subckt_template'],
                                                                          original_config=config)
-            
-                
+
+
         if optimization_config:
             print(" Search space reduction complete!")
             print("\n OPTIMIZATION CONFIGURATION:")
             print(f"   Variables to optimize: {len(optimization_config['variables_to_optimize'])}")
             for var, values in optimization_config['variables_to_optimize'].items():
                 print(f"{var}: {len(values)} choices from {values}")
-            
+
             print(f"   Fixed variables: {len(optimization_config['variables_fixed'])}")
             for var, value in optimization_config['variables_fixed'].items():
                 print(f"{var}: fixed at {value}")
-            
+
             summary = optimization_config['search_space_summary']
             reduction_factor = summary.get('reduction_factor', 'unknown')
             print(f"\n  Search space: {summary['reduced_search_space']} combinations")
@@ -2455,43 +2580,43 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
             print("  Search space reduction failed, using full search space")
             optimization_config = None
 
-        
+
         # ========================================================================
         # STEP 3: INITIALIZE OPTIMIZER WITH LLM CONFIGURATION
         # ========================================================================
         print("\n" + "="*100)
         print("STEP 3: INITIALIZING OPTIMIZER")
         print("="*100)
-        
+
         optimizer = ControlledOTAOptimizer(
             config=config,
             user_specs=user_specs,
             llm_agent=llm_agent,
             optimization_config=optimization_config
-            
+
         )
-        
+
         if optimization_config:
-            
+
             print(" Optimizer initialized with LLM-guided search space reduction")
-            
+
             config_path = os.path.join(config['results_dir'], f'opt_config_iter{regeneration_cycle}.json')
             with open(config_path, 'w') as f:
                 json.dump(optimization_config, f, indent=2)
-                    
+
         else:
             print(" Optimizer initialized with full search space")
-        
+
         if has_advanced_methods:
             print(" Advanced search methods enabled")
-        
+
         # ========================================================================
         # STEP 4: ITERATIVE OPTIMIZATION
         # ========================================================================
         print("\n" + "="*100)
         print("STEP 4: ITERATIVE OPTIMIZATION")
         print("="*100)
-        
+
         iteration = 0
         previous_best = None
 
@@ -2499,6 +2624,8 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
         last_best_fom = None
         improvement_threshold = 0.001  # 0.1% minimum improvement
         fom_converged = False  # NEW: Add convergence flag
+        lhs_count = 0  # Track LHS runs per inner loop (max 2)
+        last_lhs_seed = None  # Track seed used in first LHS for rotation
 
 
 
@@ -2507,7 +2634,7 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
         else:
             total_designs = max_total_designs
 
-            
+
         while (len(optimizer.all_searched_designs) < total_designs and not specs_met and not fom_converged):
             iteration += 1
 
@@ -2516,22 +2643,23 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
                 'num_var': len(config["variable"]),
                 'total_designs_searched': len(optimizer.all_searched_designs),
                 'num_iterations': len(optimizer.iteration_history),
+                'lhs_count': lhs_count,
                 'iterations': []
             }
-            
+
             # Add W_values if exists
             if "W_values" in config:
                 state['W_values'] = config["W_values"]
-            
+
             # Add L_values if exists
             if "L_values" in config:
                 state['L_values'] = config["L_values"]
-            
+
             # Add all parameters from YAML (works for both OTA and VCO)
             if "params" in config:
                 for param_name, param_value in config["params"].items():
                     state[param_name] = param_value
-            
+
             # Add optimization config info to state
             if optimization_config:
                 state['optimization_config'] = {
@@ -2539,41 +2667,41 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
                     'num_fixed': len(optimization_config['variables_fixed']),
                     'search_space_size': optimization_config['search_space_summary']['reduced_search_space']
                 }
-            
+
             # Add iteration history
             for i, iter_result in enumerate(optimizer.iteration_history):
                 iter_dict = {
                     'iteration': iter_result.iteration,
                     'num_designs_searched': iter_result.num_designs_searched,
                     'method': getattr(iter_result, 'method', 'unknown'),
-                    'parameters': getattr(iter_result, 'parameters', {}), 
+                    'parameters': getattr(iter_result, 'parameters', {}),
                     'best_design_pre_layout': iter_result.pre_layout.to_dict(),
                 }
                 if iter_result.post_pex:
                     iter_dict['best_design_post_pex'] = iter_result.post_pex.to_dict()
                     iter_dict['degradation'] = iter_result.degradation_percent
-                
+
                 # Calculate indices
                 start_idx = sum(ir.num_designs_searched for ir in optimizer.iteration_history[:i])
                 end_idx = start_idx + iter_result.num_designs_searched
-    
-                
+
+
                 # Add safety check
-                if start_idx < len(optimizer.all_searched_designs) and end_idx <= len(optimizer.all_searched_designs): 
+                if start_idx < len(optimizer.all_searched_designs) and end_idx <= len(optimizer.all_searched_designs):
                     iter_dict['all_designs'] = [
                         d.to_dict() for d in optimizer.all_searched_designs[start_idx:end_idx]
                     ]
-                
+
                 state['iterations'].append(iter_dict)
-            
+
             # Ask LLM what to do next
             print(f"\n{'='*100}")
             print(f"ITERATION {iteration}: CONSULTING LLM AGENT...")
             print(f"{'='*100}")
             print(f"Designs searched so far: {len(optimizer.all_searched_designs)}/{total_designs}")
-            
+
             decision = llm_agent.decide_next_iteration(state, user_specs)
-            
+
             print(f"\n LLM DECISION:")
             print(f"  Action: {decision['action'].upper()}")
             if decision['action'] == 'search':
@@ -2581,28 +2709,45 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
                 print(f"  Samples: {decision['n_samples']}")
                 if 'parameters' in decision:
                     print(f"  Parameters: {decision['parameters']}")
-            
+
             print(f"  Confidence: {decision.get('confidence', 'unknown')}")
             print(f"  Reasoning: {decision['reasoning']}")
             if 'expected_improvement' in decision:
                 print(f"  Expected: {decision['expected_improvement']}")
             if 'convergence_assessment' in decision:
                 print(f"  Convergence: {decision['convergence_assessment']}")
-            
+
             # Execute decision
             if decision['action'] == 'stop':
                 print(f"\n{'='*100}")
                 print(" LLM DECIDED TO STOP OPTIMIZATION")
                 print(f"{'='*100}")
-                print(f"Reason: {decision['reasoning']}")      
+                print(f"Reason: {decision['reasoning']}")
                 break
 
-            
+
             # Check if method is available
             if not has_advanced_methods and decision['method'] not in ['random', 'grid', 'refined']:
                 print(f"Warning: Advanced method '{decision['method']}' not available, falling back to 'random'")
                 decision['method'] = 'random'
-            
+
+            # Enforce LHS max 2 runs per inner loop
+            if decision['method'] == 'lhs':
+                if lhs_count >= 2:
+                    print(f"  LHS already run {lhs_count} times (max 2) — overridden to 'genetic'")
+                    decision['method'] = 'genetic'
+                else:
+                    # Rotate seed for second LHS
+                    if lhs_count == 1 and last_lhs_seed is not None:
+                        current_seed = decision.get('parameters', {}).get('seed')
+                        if current_seed == last_lhs_seed or current_seed is None:
+                            new_seed = last_lhs_seed + 42
+                            if 'parameters' not in decision:
+                                decision['parameters'] = {}
+                            decision['parameters']['seed'] = new_seed
+                            print(f"  Second LHS: rotating seed {last_lhs_seed} → {new_seed}")
+                    lhs_count += 1
+
             # Run iteration with LLM's strategy
             print(f"\n Running search with {decision['method']} method...")
             iter_result = optimizer.run_iteration(
@@ -2614,30 +2759,28 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
                 algorithm_params=decision.get('parameters', {}),
                 pre_layout_only=pre_layout_only  # ← ADD THIS LINE
             )
-            
+
             if iter_result:
                 iter_result.method = decision['method']
                 iter_result.parameters = decision.get('parameters', {})
-                
+
+                # Track LHS seed for seed rotation
+                if decision['method'] == 'lhs':
+                    last_lhs_seed = decision.get('parameters', {}).get('seed', last_lhs_seed)
+
                 # Update previous_best based on mode
                 if pre_layout_only:
                     previous_best = iter_result.pre_layout
-                    best_design_dict = iter_result.pre_layout.to_dict()
                 else:
                     previous_best = iter_result.post_pex if iter_result.post_pex else iter_result.pre_layout
-                    #best_design_dict = (iter_result.post_pex if iter_result.post_pex else iter_result.pre_layout).to_dict()
-                    best_design_dict = iter_result.pre_layout.to_dict()
 
-                print(f"\nDEBUG: Checking specs for best design:")
-                print(f"  user_specs_metric = '{user_specs_metric}'")
-                print(f"  design_dict keys = {list(best_design_dict.keys())}")
-                print(f"  fom = {best_design_dict.get('fom')}")
-                print(f"  dc_gain_db = {best_design_dict.get('dc_gain_db')}")
-                print(f"  ugbw = {best_design_dict.get('ugbw')}")
-                print(f"  power_dc = {best_design_dict.get('power_dc')}")
-                
-                specs_met = check_user_specs_met(best_design_dict, user_specs_metric, verbose=True)
-                print(f"DEBUG: specs_met returned = {specs_met}")
+                # Scan ALL designs to check if any meets user specs
+                specs_met = False
+                for design in optimizer.all_searched_designs:
+                    if check_user_specs_met(design.to_dict(), user_specs_metric):
+                        specs_met = True
+                        break
+
                 if specs_met:
                     print("\n" + "="*100)
                     print("USER SPECIFICATIONS MET!")
@@ -2645,8 +2788,22 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
 
 
                 # Get current best FOM for plateau detection
-                current_best_fom = best_design_dict.get('fom', 0)
-                
+                # Use best FEASIBLE FOM; fall back to raw best if none feasible yet
+                current_best_fom = None
+                for d in optimizer.all_searched_designs:
+                    dfom = d.fom
+                    if dfom is None:
+                        continue
+                    if check_user_specs_met(d.to_dict(), user_specs_metric):
+                        if current_best_fom is None or dfom > current_best_fom:
+                            current_best_fom = dfom
+                if current_best_fom is None:
+                    # No feasible design yet — use raw best FOM
+                    for d in optimizer.all_searched_designs:
+                        dfom = d.fom
+                        if dfom is not None and (current_best_fom is None or dfom > current_best_fom):
+                            current_best_fom = dfom
+
                 # Check for FOM plateau
                 if last_best_fom is not None:
                     # Calculate relative improvement (positive = better, negative = worse)
@@ -2654,7 +2811,7 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
                         relative_change = (current_best_fom - last_best_fom) / abs(last_best_fom)
                     else:
                         relative_change = current_best_fom - last_best_fom
-                    
+
                     # Check if change is significant (use absolute value for threshold comparison)
                     if abs(relative_change) < improvement_threshold:
                         plateau_count += 1
@@ -2676,9 +2833,9 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
                         print(f"   Previous: {last_best_fom:.6f}")
                         print(f"   Current: {current_best_fom:.6f}")
                         print(f"   Degradation: {abs(relative_change)*100:.2f}%")
-                    
+
                     last_best_fom = current_best_fom
-                
+
                 # Check if plateau limit reached
                 if plateau_count >= plateau_patience:
                     fom_converged = True  # NEW: Set the flag instead of break
@@ -2691,76 +2848,76 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
                     print(f"{'='*100}\n")
                     # Don't break here, let the while loop handle it
 
-                
+
                 # Print summary based on mode
                 if pre_layout_only:
                     # Pre-layout only mode
                     print(f"\n Iteration {iteration} Summary (Pre-layout):")
-                    
+
                     # Get FOM directly from results
                     pre_dict = iter_result.pre_layout.to_dict()
                     pre_value = pre_dict.get('fom', 0)
-                    
+
                     # Get FOM formatting from config
                     fom_config = config.get('metric_post', {}).get('fom', {})
                     fom_format = f".{fom_config.get('decimals', 4)}f"
                     fom_unit = fom_config.get('unit', '')
-                    
+
                     print(f"   FOM: {pre_value:{fom_format}}{fom_unit}")
-                    
+
                     # Show variable status (first iteration only)
                     if optimization_config and iteration == 1:
                         print(f"\n Variable Status:")
                         best_dict = iter_result.pre_layout.to_dict()
                         for var in optimization_config['variables_to_optimize'].keys():
                             print(f"    {var} = {best_dict.get(var)} (optimized)")
-                            
+
                         for var, fixed_val in optimization_config['variables_fixed'].items():
                             actual_val = best_dict.get(var)
-                        
+
                             if fixed_val is None or actual_val is None:
                                 status = "N/A"
                                 note = "not fixed"
                             else:
                                 status = "OK" if abs(actual_val - fixed_val) < 0.01 else "WARN"
                                 note = f"fixed at {fixed_val}"
-                        
+
                             print(f"    {var} = {actual_val} {status} ({note})")
-                                    
+
                 elif iter_result.post_pex:
                     # Full flow mode
                     print(f"\n Iteration {iteration} Summary:")
-                    
+
                     # Get FOM values from both pre and post
                     pre_dict = iter_result.pre_layout.to_dict()
                     post_dict = iter_result.post_pex.to_dict()
-                    
+
                     pre_value = pre_dict.get('fom', 0)
                     post_value = post_dict.get('fom', 0)
-                    
+
                     # Calculate degradation
                     degradation_pct = ((post_value - pre_value) / pre_value * 100) if pre_value != 0 else 0
-                    
+
                     # Get FOM formatting from config
                     fom_config = config.get('metric_post', {}).get('fom', {})
                     fom_format = f".{fom_config.get('decimals', 4)}f"
                     fom_unit = fom_config.get('unit', '')
-                    
+
                     print(f"   Pre-layout FOM:  {pre_value:{fom_format}}{fom_unit}")
                     print(f"   Post-PEX FOM:    {post_value:{fom_format}}{fom_unit}")
                     print(f"   Degradation:     {degradation_pct:+.1f}%")
-                    
+
                     # Show which variables were optimized vs fixed
                     if optimization_config and iteration == 1:
                         print(f"\n📋 Variable Status:")
                         best_dict = iter_result.post_pex.to_dict()
-                        
+
                         for var in optimization_config['variables_to_optimize'].keys():
                             print(f"    {var} = {best_dict.get(var)} (optimized)")
-                        
+
                         for var, fixed_val in optimization_config['variables_fixed'].items():
                             actual_val = best_dict.get(var)
-                            
+
                             # Handle None values
                             if actual_val is None:
                                 status = "❓"
@@ -2778,7 +2935,7 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
         all_designs_across_cycles.extend(optimizer.all_searched_designs)
         all_iteration_history_all_cycles.extend(optimizer.iteration_history)
 
-                
+
 
     optimizer.all_searched_designs = all_designs_across_cycles
     optimizer.iteration_history = all_iteration_history_all_cycles
@@ -2788,32 +2945,32 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
     print("\n" + "="*100)
     print("OPTIMIZATION COMPLETE - FINAL SUMMARY")
     print("="*100)
-    
+
     optimizer.print_summary()
 
     # Calculate total elapsed time
     trial_end_time = time.time()
     total_elapsed_time = trial_end_time - trial_start_time
-    
+
     print(f"\n⏱️  TOTAL TIME FOR THIS TRIAL:")
     print(f"   Total elapsed: {total_elapsed_time:.1f} seconds ({total_elapsed_time/60:.2f} minutes)")
 
-    
-    
+
+
     # Additional summary with optimization config
-    
+
     if optimization_config:
         print("\n SEARCH SPACE EFFICIENCY:")
         print(f"   Total combinations explored: {len(optimizer.all_searched_designs):,}")
         print(f"   Reduced search space size: {optimization_config['search_space_summary']['reduced_search_space']}")
         print(f"   Original full space size: {optimization_config['search_space_summary']['original_full_space']}")
         print(f"   Space reduction factor: {optimization_config['search_space_summary']['reduction_factor']}")
-    
+
     # Save LLM decision log
     llm_log_file = optimizer.results_dir / 'llm_decisions.json'
     llm_agent.save_decision_log(llm_log_file)
     print(f"\n LLM decision log saved to: {llm_log_file}")
-    
+
     # Save optimization config if used
     if optimization_config:
         opt_config_file = optimizer.results_dir / 'optimization_config.json'
@@ -2821,32 +2978,32 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
             json.dump(optimization_config, f, indent=2)
         print(f" Optimization configuration saved to: {opt_config_file}")
 
-    # Get best FOM
-    if optimizer.iteration_history:
-        final_iter = optimizer.iteration_history[-1]
-        if pre_layout_only:
-            best_fom = final_iter.pre_layout.fom
-        else:
-            best_fom = final_iter.post_pex.fom if final_iter.post_pex else final_iter.pre_layout.fom
-    else:
-        best_fom = None
-    
     best_fom = None
     evals_to_best = 0
-    
+    best_feasible_found = False
+
     for idx, design in enumerate(optimizer.all_searched_designs, start=1):
         current_fom = design.fom
-        
+
         # Skip None FOMs from failed simulations
         if current_fom is None:
             continue
-        
-        # Track best
-        if best_fom is None or current_fom > best_fom:
-            best_fom = current_fom
-            evals_to_best = idx  # ← Evaluation number (1-indexed)
-            print(f"    New best FOM {best_fom:.4f} found at evaluation {evals_to_best}")
-    
+
+        specs_ok = check_user_specs_met(design.to_dict(), user_specs_metric)
+
+        # Priority 1: feasible design with higher FOM
+        if specs_ok:
+            if not best_feasible_found or current_fom > best_fom:
+                best_fom = current_fom
+                evals_to_best = idx
+                best_feasible_found = True
+                print(f"    New best FEASIBLE FOM {best_fom:.4f} found at evaluation {evals_to_best}")
+        # Fallback: track raw best if no feasible design found yet
+        elif not best_feasible_found:
+            if best_fom is None or current_fom > best_fom:
+                best_fom = current_fom
+                evals_to_best = idx
+
     # Only print summary if we found at least one valid FOM
     if best_fom is not None:
         print(f"\n📊 BEST FOM SUMMARY:")
@@ -2855,14 +3012,14 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
         print(f"   Sample efficiency: {(evals_to_best/len(optimizer.all_searched_designs))*100:.1f}%")
     else:
         print(f"\n⚠️  No valid FOMs found - all {len(optimizer.all_searched_designs)} simulations failed")
-        
-    
+
+
     # Save trial summary with total time
     trial_summary = {
         'trial_index': trial_index,
         'total_time_seconds': total_elapsed_time,
         'total_designs_searched': len(optimizer.all_searched_designs),
-        'evals_to_best': evals_to_best,  
+        'evals_to_best': evals_to_best,
         'num_iterations': len(optimizer.iteration_history),
         'best_fom': best_fom,
         'specs_met': specs_met,
@@ -2870,18 +3027,18 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
         'timestamp_start': datetime.fromtimestamp(trial_start_time).isoformat(),
         'timestamp_end': datetime.fromtimestamp(trial_end_time).isoformat()
     }
-    
+
     trial_summary_file = optimizer.results_dir / f'trial_{trial_index}_summary.json'
     print(f"\n📁 Saving trial summary to: {trial_summary_file}")
     print(f"   File path type: {type(trial_summary_file)}")
     print(f"   File path exists (parent): {trial_summary_file.parent.exists()}")
-    
+
     with open(trial_summary_file, 'w') as f:
         json.dump(trial_summary, f, indent=2)
-    
+
     print(f"✅ Trial summary saved successfully!")
     print(f"   File size: {trial_summary_file.stat().st_size} bytes")
-    
+
     # Verify file was created
     if trial_summary_file.exists():
         print(f"✅ Verified: File exists at {trial_summary_file}")

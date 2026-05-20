@@ -1,4 +1,4 @@
-pdk_lib_path: "/path/to/skywater-pdk/sky130.lib.spice"
+pdk_lib_path: "/Users/garrett/workspace/pdk/sky130/libraries/sky130_fd_pr/latest/models/sky130.lib.spice"
 align_pdk_path: "/path/to/ALIGN-pdk-sky130/SKY130_PDK/"
 pex_script_path: "./test_magic_pex.py"
 results_dir: "./folded_cascode_ota/fom_test_new"
@@ -72,8 +72,7 @@ metrics:
   - dc_gain_db
   - ugbw
   - power_dc
-  - fom
-
+  - fom_user
 base_metrics:
   gain_db:
     name: "Gain"
@@ -99,7 +98,7 @@ base_metrics:
     format: ".1f"
     degradation_key: "area_percent"
 
-  fom:
+  fom_user:
     name: "FOM"
     unit: ""
     format: ".3f"
@@ -122,7 +121,7 @@ metric_post:
     decimals: 2
     unit: "µW"
 
-  fom:
+  fom_user:
     scale: 1
     decimals: 3
     unit: ""
