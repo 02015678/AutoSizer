@@ -23,3 +23,22 @@ circuits_yaml/.ipynb_checkpoints/
 circuits_yaml/.txt
 circuit_sim/.ipynb_checkpoints/
 circuit_sim/__pycache__/
+
+# Test & simulation output directories
+*_test_folder*/
+*_results/
+
+# Generated / temporary files
+session.md
+claude_code_diaglog.md
+*.patch
+all_circuits_llm_agent_summary_*.json
+dfcfc_amplifier/
+
+# Analysis / design notes (not part of code)
+ANALYSIS_CODE.md
+ANALYSIS_JSON.md
+ANALYSIS_RESULT.md
+ANALYSIS_SIMPY.md
+algorithm_selection_flow.md
+docs/circuit_type.md
