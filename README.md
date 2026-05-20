@@ -397,31 +397,46 @@ This value is stored in `results['fom']`, used for reporting in the optimization
 
 ### Optuna TPE FOM (optimizer target)
 
-The TPE Bayesian optimizer receives a **penalized** version of the FOM that accounts for constraint violations, following the INSIGHT paper formulation (arXiv 2407.07346, Section 2.3):
+The TPE Bayesian optimizer receives a **penalized** version of the FOM that accounts for constraint violations, following the INSIGHT paper (arXiv 2407.07346, Section 2.3) with an **exponential barrier** refinement:
 
 ```
-TPE_FoM = display_FoM - Σᵢ min(1, max(0, fᵢ(x)))
+TPE_FoM = display_FoM - |display_FoM| × Σᵢ min(cap_ratio, max(0, exp(k × fᵢ(x)) - 1))
 ```
 
-where `fᵢ(x)` is a normalized violation function for each hard constraint (positive when violated, zero when satisfied):
+Parameters:
+- `k = 3.0` — exponential steepness; a 0.5% violation yields ~1.5% FOM penalty (gentle)
+- `cap_ratio = 0.5` — per-constraint penalty capped at 50% of |FOM|, reached at ~14.6% violation
+
+where `fᵢ(x)` is a normalized violation for each hard constraint:
 
 | Constraint | fᵢ(x) | Example |
 |---|---|---|
 | `dc_gain_db > 55` | `(55 − actual) / 55` | actual=60 → fᵢ=−0.09 (penalty=0) |
-| `power_dc < 50` | `(actual − 50) / 50` | actual=70 → fᵢ=0.40 (penalty=0.40) |
+| `power_dc < 50` | `(actual − 50) / 50` | actual=70 → fᵢ=0.40 → 3.3× FOM hit |
+
+The exponential barrier ensures that even **borderline** violations (e.g., power=81µW vs 80µW target, 1.4% over) produce a meaningful penalty — unlike a linear formulation where such small violations are invisible to the optimizer.
 
 **Why two FOMs?** The display FOM preserves a "clean" view of raw circuit performance for human reading and LLM analysis. The penalized TPE FOM steers the optimizer away from infeasible regions — designs with violated specs receive a lower score, so the TPE sampler naturally prioritizes feasible areas of the search space.
 
-**Behavior of the penalty:**
+**Behavior of the penalty (k=3.0, cap=50%):**
 
-| Scenario | Penalty | TPE FOM vs Display FOM |
+| Violation (fᵢ) | Penalty (% of FOM) | Effect on TPE |
 |---|---|---|
-| All constraints met | 0.0 | Equal — pure optimization of the display FOM |
-| One constraint mildly violated (e.g., gain 50 vs 55 target) | ~0.09 | Slightly lower — still explored if the reward is high |
-| One constraint severely violated (>100% off) | 1.0 (capped) | Significantly lower |
-| Multiple violated | Sum per constraint, each capped at 1 | Strongly deprioritized |
+| 0.0% (all specs met) | 0.0% | Pure FOM optimization |
+| 0.5% (borderline) | ~1.5% | Gentle, barely visible |
+| 1.4% (the inverter bug case) | ~4.3% | Clearly below feasible designs |
+| 5% (medium) | ~16% | Unmistakable to TPE |
+| ≥14.6% (severe) | 50% (capped) | Strongly deprioritized |
 
 The penalty is computed in `_get_constraint_penalty()` and applied in `_calculate_objective_value()` (`advanced_search_methods.py`). Only the Optuna objective value is affected; the stored `results['fom']` and all LLM-facing metrics remain unchanged.
+
+---
+
+## Known Limitations
+
+### LLM Search Space Narrowing (OPEN)
+
+The LLM agent consistently fails to narrow variable search spaces even when clear monotonic dominance exists (e.g., `L_inv=0.3` always produces the best FOM). It correctly **identifies** the pattern in its reasoning but keeps the full range, wasting simulation budget on suboptimal values. This is a prompt design issue — the statistical summary shows flat frequency counts (not per-value FOM), exploration is praised unconditionally, and no explicit narrowing rules exist. A fix is being developed to add per-value sensitivity analysis, narrowing decision rules, and efficiency-oriented budget framing to the LLM prompt.
 
 ---
 
