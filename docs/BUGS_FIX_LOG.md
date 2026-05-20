@@ -619,3 +619,138 @@ This keeps subspaces compact (3⁶=729 to 5⁶=15,625 combos) while the extremes
 |------|--------|
 | `problem_agent.py:114` | "5-7 values each, or all available..." → "3-5 values each, include smallest and largest from available list" |
 | `problem_agent.py:341` | "Each variable has 5-7 values (or all available if fewer)" → "Each variable has 3-5 values (smallest and largest always included)" |
+
+---
+
+## 10. LLM Fails to Narrow Search Space When Monotonic Dominance Exists — **OPEN 2026-05-18**
+
+### The Problem
+
+In the `3_stage_ring_osc_new` optimization (3 trials, 371 total simulations), the LLM consistently failed to narrow `L_inv` to its minimum value (0.3µm) despite overwhelming evidence that smaller L always improves FOM. The LLM correctly **identified** the pattern ("top designs are heavily clustered at the 0.3um minimum") but kept the full range `[0.3, 0.4, 0.5, 0.6, 0.7]` in all subsequent iterations. This wasted ~40% of the simulation budget (~150 runs) on L≥0.4 designs that had no chance of being optimal.
+
+**Evidence from the actual LLM decision (opt_config_iter1.json):**
+
+```json
+"L_inv": {
+  "search_space": [0.3, 0.4, 0.5, 0.6, 0.7],   // ← kept all 5 values
+  "range_reasoning": "Full range included; top designs are heavily clustered at the 0.3um minimum.",
+  "expected_behavior": "Decreasing L_inv reduces stage delay and parasitic capacitance, increasing frequency and FOM.",
+  "sensitivity": "high"
+}
+```
+
+The LLM knows L=0.3 dominates, knows the relationship is monotonic ("decreasing L → increasing FOM"), and still doesn't narrow. This is **not** a knowledge gap — it's a prompt design issue that fails to translate correct analysis into correct action.
+
+### Root Cause: Prompt Design Issues
+
+Five prompt weaknesses identified (in priority order):
+
+1. **Flat statistical summary hides per-value performance** — The "Parameter distribution" section shows equal-value frequency counts (`L_inv values: {0.7: 4, 0.3: 4, ...}`) without breaking down FOM by value. The LLM sees equal sampling counts and thinks the space is still open.
+
+2. **"Exploration" is praised unconditionally** — `**High exploration** - diverse solutions found` reads as positive reinforcement. No counterbalance warns when exploration is wasteful.
+
+3. **No "boundary dominance" narrowing rule** — The prompt describes WHEN to use each algorithm (LHS vs optuna vs genetic) but not WHEN to narrow a variable's search space. The method descriptions are algorithm-focused, not variable-focused.
+
+4. **"Budget status: Early stage" encourages dawdling** — The LLM reads "I have plenty of budget" instead of "early narrowing maximizes later budget efficiency."
+
+5. **`change_from_previous` tracking biases toward change** — The optimization_config structure tracks what changed each iteration. Keeping the same search space produces nothing to report, subtly pushing the LLM to "do something different" each round.
+
+### Change Plan
+
+Five targeted changes across two files:
+
+#### A. Per-value performance breakdown — `llm_guided_ota_optimization.py`
+
+Add a new section after `_format_top_designs()` output that groups top-N designs by variable value:
+
+```
+### Variable Sensitivity Analysis (top-10 designs by FOM)
+
+L_inv:
+  L=0.3: mean FOM=1.35, appears in 9/10 top designs ★ DOMINANT
+  L=0.4: mean FOM=1.08, appears in 1/10 top designs
+  L=0.5: mean FOM=0.92, appears in 0/10 top designs
+  ... (no top designs at L=0.6 or L=0.7)
+→ L_inv=0.3 is the minimum available value AND dominates top designs.
+  Consider fixing at 0.3 to free budget for ratio optimization.
+
+W_pmos:
+  W=1.0: mean FOM=1.30, appears in 5/10 top designs
+  W=2.0: mean FOM=1.28, appears in 3/10 top designs
+  W=3.0: mean FOM=1.15, appears in 2/10 top designs
+→ W_pmos shows spread across 3 values — keep full range for now.
+```
+
+**Implementation**: New method `_build_sensitivity_section(top_designs, var_names)` in `llm_guided_ota_optimization.py`, wired into the state report after the constraint overview section.
+
+#### B. Narrowing decision rule — `prompts.py`
+
+Insert before the method descriptions:
+
+```
+### When to Narrow a Variable's Search Space
+
+NARROW (fix at boundary) when ALL of:
+  1. ≥80% of top-10 designs share the same value for that variable
+  2. That value is at a boundary (minimum or maximum) of the current range
+  3. The relationship appears monotonic (e.g., "smaller always better")
+
+EXPAND when:
+  1. Top designs span ≥3 different values, OR
+  2. Best value is NOT at a boundary
+
+Keep CURRENT range when uncertain, but DEFAULT BIAS: when a variable
+satisfies all three NARROW conditions, NARROW IT. A false narrowing wastes
+a few simulations. A missed narrowing wastes dozens.
+```
+
+**Implementation**: New section in `prompts.py`'s optimization guidance block.
+
+#### C. Replace "Exploration score" with efficiency framing — `llm_guided_ota_optimization.py`
+
+Replace the `Search behavior:` section:
+
+```
+BEFORE:
+  - Exploration score: 0.31
+  - Exploitation score: 0.80
+  - **High exploration** - diverse solutions found
+
+AFTER:
+  - Search efficiency: 31% of combos sampled
+  - Concentration: top-5 designs span only 2 of 5 L_inv values
+  → Recommendation: Narrow L_inv to [0.3] — it dominates top designs
+    and appears at the range boundary.
+```
+
+**Implementation**: Modify the search behavior section in the state report builder.
+
+#### D. Budget framing — `llm_guided_ota_optimization.py`
+
+Replace `Budget status: Early stage (<100)` with:
+
+```
+- Budget used: 20/128 (16%)
+- If L_inv narrowed to 0.3 only: 3× more budget available for W_pmos/W_nmos ratio optimization
+  (180 combos → 36 combos in the narrowed space)
+```
+
+**Implementation**: Extend the budget section to show the "narrowing dividend."
+
+#### E. No change needed for `change_from_previous` — already adequate
+
+The tracking itself is useful. Fixing A-D above will naturally produce the right narrowing decisions, making `change_from_previous` reflect meaningful tightening rather than arbitrary changes.
+
+### Verification
+
+1. Re-run `3_stage_ring_osc_new` with modified prompts — verify the LLM narrows `L_inv` to `[0.3]` after the first LHS iteration
+2. Confirm the narrowed search converges to the same optimum `(0.3, 2.0, 1.5)` in fewer evaluations
+3. Check that `W_pmos` and `W_nmos` are NOT prematurely narrowed (they have genuine trade-off structure)
+4. Run the `inverter_gf` optimization to verify the sensitivity analysis section renders correctly for a different circuit type
+
+### Files Affected
+
+| File | Change |
+|------|--------|
+| `llm_guided_ota_optimization.py` | New `_build_sensitivity_section()` method; modified budget and search behavior sections |
+| `prompts.py` | New "When to Narrow a Variable's Search Space" section in optimization guidance |

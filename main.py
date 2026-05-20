@@ -101,8 +101,8 @@ def aggregate_trial_metrics_across_dirs(base_results_dir, n_trials):
     }
 
 CIRCUIT_REGISTRY = {
-    "five_trans_ota_gf": {
-        "config_path": "./circuits_yaml/five_trans_ota_gf.yaml"
+    "bandgap_reference": {
+        "config_path": "./circuits_yaml/bandgap_reference.yaml"
     }
 }
 

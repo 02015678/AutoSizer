@@ -820,32 +820,6 @@ class ControlledOTAOptimizer:
             inst_pins = self._build_instantiation_pins(subckt_pins, testbench_signals)
             fmt["inst_pins"] = inst_pins
 
-            tb_keys = self._placeholders_in_format(tb_tmpl)
-            tb_keys.discard("ota_subckt")
-
-            # Final missing check
-            missing = sorted(
-                k for k in (self._placeholders_in_format(subckt_tmpl) | tb_keys)
-                if k not in fmt or fmt[k] is None
-            )
-            if missing:
-                print(f"\n{'='*80}")
-                print("ERROR: Missing placeholders")
-                print(f"{'='*80}")
-                print(f"Missing: {missing}")
-                print(f"\nAvailable keys ({len(fmt)}):")
-                for key in sorted(fmt.keys()):
-                    print(f"  - {key}: {fmt[key]}")
-                print(f"{'='*80}\n")
-                raise KeyError("Missing placeholder values: " + ", ".join(missing))
-
-            # Render netlist
-            subckt_text = subckt_tmpl.format(**fmt)
-            netlist = tb_tmpl.format(ota_subckt=subckt_text, **fmt)
-
-            with open(netlist_path_full, "w") as f:
-                f.write(netlist)
-
         elif trial_values is not None and netlist_path is not None:
             # POST-PEX PATH
 
@@ -1025,6 +999,38 @@ class ControlledOTAOptimizer:
             return self._simulate_fold_cascode_ota_bf(fmt, params, variables)
 
         # =======================================================================
+        # TEMPLATE RENDERING (only for non-circuit_type circuits)
+        # =======================================================================
+
+        if netlist_path is None:
+            # Pre-layout: render template for ngspice
+            tb_keys = self._placeholders_in_format(tb_tmpl)
+            tb_keys.discard("ota_subckt")
+
+            # Final missing check
+            missing = sorted(
+                k for k in (self._placeholders_in_format(subckt_tmpl) | tb_keys)
+                if k not in fmt or fmt[k] is None
+            )
+            if missing:
+                print(f"\n{'='*80}")
+                print("ERROR: Missing placeholders")
+                print(f"{'='*80}")
+                print(f"Missing: {missing}")
+                print(f"\nAvailable keys ({len(fmt)}):")
+                for key in sorted(fmt.keys()):
+                    print(f"  - {key}: {fmt[key]}")
+                print(f"{'='*80}\n")
+                raise KeyError("Missing placeholder values: " + ", ".join(missing))
+
+            # Render netlist
+            subckt_text = subckt_tmpl.format(**fmt)
+            netlist = tb_tmpl.format(ota_subckt=subckt_text, **fmt)
+
+            with open(netlist_path_full, "w") as f:
+                f.write(netlist)
+
+        # =======================================================================
         # RUN NGSPICE
         # =======================================================================
 
@@ -1108,7 +1114,7 @@ class ControlledOTAOptimizer:
         # =======================================================================
 
         metric_post = self.config.get("metric_post", {})
-        safe_globals = {"__builtins__": {}, "math": __import__('math'), "pow": pow}
+        safe_globals = {"__builtins__": {}, "math": __import__('math'), "pow": pow, "abs": abs, "max": max}
 
         processed = {}
 
@@ -1296,7 +1302,7 @@ class ControlledOTAOptimizer:
 
         # Post-process with metric_post (FOM calculated here)
         metric_post = self.config.get("metric_post", {})
-        safe_globals = {"__builtins__": {}, "math": math, "pow": pow, "abs": abs}
+        safe_globals = {"__builtins__": {}, "math": math, "pow": pow, "abs": abs, "max": max}
 
         processed = {}
         for name in self.config.get('metrics', []):
