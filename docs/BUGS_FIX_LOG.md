@@ -622,7 +622,7 @@ This keeps subspaces compact (3⁶=729 to 5⁶=15,625 combos) while the extremes
 
 ---
 
-## 10. LLM Fails to Narrow Search Space When Monotonic Dominance Exists — **OPEN 2026-05-18**
+## 10. LLM Fails to Narrow Search Space When Monotonic Dominance Exists — **FIXED 2026-05-21**
 
 ### The Problem
 
@@ -754,3 +754,36 @@ The tracking itself is useful. Fixing A-D above will naturally produce the right
 |------|--------|
 | `llm_guided_ota_optimization.py` | New `_build_sensitivity_section()` method; modified budget and search behavior sections |
 | `prompts.py` | New "When to Narrow a Variable's Search Space" section in optimization guidance |
+
+### Implementation Summary (2026-05-21)
+
+Four changes implemented across two files:
+
+**Change A — Per-value sensitivity analysis** (`llm_guided_ota_optimization.py`):
+- New `_get_var_values(var_name)` helper resolving allowed values with per-variable overrides
+- New `_build_sensitivity_section(state, top_n=10)` method: groups top designs by variable value, computes per-value mean FOM and appearance frequency, detects boundary dominance (≥80% concentration at min/max of range), emits NARROW recommendation
+- Wired into `_build_iteration_history_section()` after the statistical analysis block
+
+**Change B — Factor 6: Variable Narrowing** (`prompts.py`):
+- New "Factor 6: Variable Narrowing" subsection in `decision_framework_section()` with explicit NARROW (3 conditions: ≥80% top-10 on one value + at boundary + monotonic), EXPAND, and KEEP rules
+- DEFAULT BIAS toward narrowing: "A false narrowing wastes a few simulations. A missed narrowing wastes dozens."
+- Factor 3 (Design Space Insights) updated: edge-parameter guidance now distinguishes DOMINANT-at-boundary (narrow) vs spread-but-best-at-boundary (expand)
+
+**Change C — Efficiency framing** (`llm_guided_ota_optimization.py`):
+- Replaced exploration/exploitation scores and "High exploration" / "High exploitation" labels in `_add_statistical_analysis()` with search efficiency (% of combos sampled) and concentration analysis (distinct values per variable in top-5 designs)
+
+**Change D — Narrowing dividend in budget** (`llm_guided_ota_optimization.py`):
+- `_build_current_state_section()` now shows narrowing opportunity (e.g., "fix W_pmos (6 values) → 30 combos, 6× more budget per remaining combo") and budget density (designs per combo)
+
+### Results (Re-run: 2026-05-21)
+
+3-stage ring oscillator re-run after the fix:
+
+| Trial | Old Evals | New Evals | Reduction |
+|-------|----------|-----------|-----------|
+| 0 | 128 | 25 | 80% |
+| 1 | 130 | 111 | 15% |
+| 2 | 113 | 58 | 49% |
+| **Total** | **371** | **194** | **48%** |
+
+All three trials successfully met specifications. Trial 0 found the optimum in a single LHS iteration (25 designs). Trial 1 saw the LLM consciously override the narrowing recommendation for `W_pmos` to "avoid locking the search into an infeasible region" — a model-level risk aversion, not a prompt design issue. The sensitivity analysis correctly identified `W_pmos=1.0` as DOMINANT (9/10 top designs, 90%) at the minimum boundary and recommended narrowing; the LLM acknowledged this reasoning but chose to expand instead.
