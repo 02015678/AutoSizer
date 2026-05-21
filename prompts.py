@@ -213,9 +213,9 @@ def decision_framework_section(metric_name: str) -> str:
     - **Parameter sensitivity**: Which parameters most affect {metric_name['name']}?
     - **Constraint analysis**: Are constraints limiting potential improvements?
     - **Edge parameters**: If optimal parameters are at edges of search space:
-      - Consider expanding search space in that direction
-      - Try methods that can explore beyond current bounds
-      - Consider constraint relaxation if appropriate
+      - If >=80% of top designs share the SAME boundary value AND relationship is monotonic: NARROW (see Factor 6)
+      - If top designs span multiple values but best is at a boundary: consider expanding
+      - If top designs span multiple values and best is interior: keep current range
     
     ### Factor 4: Method Complementarity
     - **Method diversity**: Different methods explore space differently
@@ -226,7 +226,23 @@ def decision_framework_section(metric_name: str) -> str:
     - **Remaining budget**: Adjust sample counts based on remaining budget
     - **Expected returns**: More samples early, fewer as convergence approaches
     - **Time constraints**: Each iteration costs ~2-3 minutes (ALIGN+PEX)
-    
+
+    ### Factor 6: Variable Narrowing (reduce search space)
+    Refer to the VARIABLE SENSITIVITY ANALYSIS section that shows per-value FOM for top-10 designs.
+
+    **NARROW (fix at a single boundary value) when ALL three conditions hold:**
+    1. >=80% of top-10 designs share the same value for that variable
+    2. That value is at a boundary (minimum or maximum) of the current allowed range
+    3. The relationship appears monotonic (e.g., "always smaller -> better FOM")
+
+    **EXPAND range when:**
+    1. Top designs span >=3 different values (genuine trade-off exists), OR
+    2. Best value is NOT at a boundary (room for further improvement)
+
+    **KEEP current range** when uncertain (not enough data for clear judgment).
+
+    **DEFAULT BIAS toward narrowing:** A false narrowing wastes a few simulations on a suboptimal fix. A missed narrowing wastes dozens of simulations on suboptimal values that have no chance of being optimal. When in doubt and conditions are met, NARROW.
+
     ## 🎯 DECISION MAKING PROCESS
     
     **Step 1: Diagnose the current situation**

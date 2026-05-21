@@ -1292,6 +1292,7 @@ class LLMOptimizationAgent:
         # Add summary sections
         sections.append(self._build_best_achieved_section(best_value, best_iter, metric_info))
         sections.append(self._add_statistical_analysis(state))
+        sections.append(self._build_sensitivity_section(state))
         sections.append(self._build_trend_analysis_section(post_pex_values, state, metric_info))
 
         return "\n".join(sections)
@@ -1421,13 +1422,36 @@ class LLMOptimizationAgent:
         lhs_runs = state.get('lhs_count', 0)
         lhs_info = f"  (LHS runs: {lhs_runs}/2)" if lhs_runs > 0 else ""
 
+        # Narrowing dividend: show budget impact of fixing the widest variable
+        max_var = None
+        max_count = 0
+        for var_name in var_names:
+            allowed = self._get_var_values(var_name)
+            if allowed and len(allowed) > max_count:
+                max_count = len(allowed)
+                max_var = var_name
+
+        narrowing_note = ""
+        if max_var and max_count > 2 and total_combinations > 0:
+            narrowed_combos = total_combinations // max_count
+            narrowing_note = (
+                f"\n        - Narrowing opportunity: fix {max_var} ({max_count} values) "
+                f"→ {narrowed_combos} combos (vs {total_combinations}), "
+                f"{max_count}x more budget per remaining combo"
+            )
+
+        if total_combinations > 0:
+            narrowing_note += (
+                f"\n        - Budget density: {total_designs}/{total_combinations} designs per combo"
+            )
+
         return f"""## CURRENT STATE
         {search_space_section}
 
         ### Budget and Progress
         - **Total designs searched: {total_designs}**
         - **Iterations completed: {state['num_iterations']}{lhs_info}**
-        - **Budget status**: {budget_status}"""
+        - **Budget status**: {budget_status}{narrowing_note}"""
 
     def _build_constraint_overview_section(self, state: Dict) -> str:
         """Build a per-constraint best-values overview across all designs.
@@ -1867,27 +1891,135 @@ class LLMOptimizationAgent:
                     # FIX: Use safe_format instead of f'{v:.2f}'
                     analysis += f"  - Most common {param}: {[safe_format(v, 2) for v, c in top3]}\n"
 
-            # Exploration vs exploitation analysis
+            # Search efficiency analysis
             if len(values) > 5:
-                # Exploration: high std dev / range
-                # Exploitation: many values close to max
-                range_val = max_val - min_val
-                exploration_score = std_dev / range_val if range_val > 0 else 0
-                top_quartile = len([v for v in values if v >= percentile_values[3]]) / len(values)
+                # Compute total combinatorial space
+                total_combos = 1
+                for var_name in self.var_names:
+                    specific_key = f"{var_name}_values"
+                    if specific_key in self.config:
+                        allowed = self.config[specific_key]
+                    elif var_name.startswith('W_') and 'W_values' in self.config:
+                        allowed = self.config['W_values']
+                    elif var_name.startswith('L_') and 'L_values' in self.config:
+                        allowed = self.config['L_values']
+                    else:
+                        continue
+                    total_combos *= len(allowed)
 
-                analysis += f"- Search behavior:\n"
-                analysis += f"  - Exploration score: {exploration_score:.2f}\n"
-                analysis += f"  - Exploitation score: {top_quartile:.2f}\n"
+                coverage_pct = len(values) / total_combos * 100 if total_combos > 0 else 0
+                analysis += f"- Search efficiency: {len(values)}/{total_combos} combos sampled ({coverage_pct:.1f}%)\n"
 
-                if exploration_score > 0.3:
-                    analysis += f"  - **High exploration** - diverse solutions found\n"
-                elif top_quartile > 0.4:
-                    analysis += f"  - **High exploitation** - many solutions near optimum\n"
-                else:
-                    analysis += f"  - **Balanced search** - good mix of exploration/exploitation\n"
+                # Concentration: distinct values in top designs vs total available
+                top_n = min(5, len(sorted_vals))
+                top_designs = designs[:top_n]
+                concentration_parts = []
+                for var_name in self.var_names:
+                    specific_key = f"{var_name}_values"
+                    if specific_key in self.config:
+                        allowed = self.config[specific_key]
+                    elif var_name.startswith('W_') and 'W_values' in self.config:
+                        allowed = self.config['W_values']
+                    elif var_name.startswith('L_') and 'L_values' in self.config:
+                        allowed = self.config['L_values']
+                    else:
+                        continue
+                    top_values = set()
+                    for d in top_designs:
+                        v = d.get(var_name)
+                        if v is not None:
+                            top_values.add(v)
+                    if allowed and len(allowed) > 1:
+                        concentration_parts.append(f"{var_name}: {len(top_values)}/{len(allowed)} values in top-{top_n}")
+                if concentration_parts:
+                    analysis += f"- Concentration: {', '.join(concentration_parts)}\n"
 
         return analysis
 
+
+    def _get_var_values(self, var_name: str):
+        """Resolve allowed values for a variable, checking per-variable overrides first."""
+        specific_key = f"{var_name}_values"
+        if specific_key in self.config:
+            return self.config[specific_key]
+        if var_name.startswith('W_') and 'W_values' in self.config:
+            return self.config['W_values']
+        if var_name.startswith('L_') and 'L_values' in self.config:
+            return self.config['L_values']
+        return None
+
+    def _build_sensitivity_section(self, state: Dict, top_n: int = 10) -> str:
+        """Analyze top-N designs per variable: per-value mean FOM, boundary dominance."""
+        all_designs = []
+        for iter_data in state.get('iterations', []):
+            all_designs.extend(iter_data.get('all_designs', []))
+
+        valid = [d for d in all_designs if d.get('fom') is not None]
+        if len(valid) < 3:
+            return ""
+
+        sorted_designs = sorted(valid, key=lambda d: d['fom'], reverse=True)
+        top_n = min(top_n, len(sorted_designs))
+        top_designs = sorted_designs[:top_n]
+
+        lines = ["", "### VARIABLE SENSITIVITY ANALYSIS (top-{} designs by FOM)".format(top_n)]
+
+        # Discover variable names from design data
+        var_names_in_designs = set()
+        metric_suffixes = ('db', 'uw', 'mhz', 'ps', 'percent', 'mhz')
+        for d in top_designs:
+            for k in d:
+                if k in ('fom', 'area', 'fom_per_area', 'design_number', 'target_metric_value'):
+                    continue
+                if isinstance(d[k], (int, float)) and not any(k.endswith(s) for s in metric_suffixes):
+                    var_names_in_designs.add(k)
+
+        if not var_names_in_designs:
+            var_names_in_designs = set(self.var_names)
+
+        for var_name in sorted(var_names_in_designs):
+            allowed = self._get_var_values(var_name)
+            if not allowed:
+                continue
+
+            value_groups = {}
+            for d in top_designs:
+                v = d.get(var_name)
+                if v is not None:
+                    value_groups.setdefault(v, []).append(d['fom'])
+
+            if not value_groups:
+                continue
+
+            lines.append(f"\n**{var_name}:**")
+            value_stats = []
+            for val in sorted(value_groups.keys()):
+                foms = value_groups[val]
+                mean_fom = sum(foms) / len(foms)
+                count = len(foms)
+                pct = count / top_n * 100
+                value_stats.append((val, mean_fom, count, pct))
+
+            for val, mean_fom, count, pct in value_stats:
+                is_boundary = val == allowed[0] or val == allowed[-1]
+                is_dominant = pct >= 80
+                tag = ""
+                if is_dominant and is_boundary:
+                    tag = " DOMINANT at {} boundary".format(
+                        'minimum' if val == allowed[0] else 'maximum')
+                elif is_dominant:
+                    tag = " DOMINANT"
+                lines.append(f"  {val}: mean FOM={mean_fom:.3f}, {count}/{top_n} top designs ({pct:.0f}%){tag}")
+
+            if value_stats:
+                dominant = max(value_stats, key=lambda x: x[2])
+                dominant_val, _, dominant_count, dominant_pct = dominant
+                is_boundary = dominant_val == allowed[0] or dominant_val == allowed[-1]
+                if is_boundary and dominant_pct >= 80:
+                    boundary_label = "minimum" if dominant_val == allowed[0] else "maximum"
+                    lines.append(f"  NARROW: Fix {var_name}={dominant_val} ({boundary_label}, {dominant_count}/{top_n} top designs).")
+
+        return "\n".join(lines)
 
 
     def _get_budget_status(self, total_designs: int) -> str:
