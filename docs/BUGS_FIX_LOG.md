@@ -775,15 +775,26 @@ Four changes implemented across two files:
 **Change D — Narrowing dividend in budget** (`llm_guided_ota_optimization.py`):
 - `_build_current_state_section()` now shows narrowing opportunity (e.g., "fix W_pmos (6 values) → 30 combos, 6× more budget per remaining combo") and budget density (designs per combo)
 
-### Results (Re-run: 2026-05-21)
+### Results
 
-3-stage ring oscillator re-run after the fix:
+#### Before Fix (May 18 run)
 
-| Trial | Old Evals | New Evals | Reduction |
-|-------|----------|-----------|-----------|
-| 0 | 128 | 25 | 80% |
-| 1 | 130 | 111 | 15% |
-| 2 | 113 | 58 | 49% |
-| **Total** | **371** | **194** | **48%** |
+| Trial | Total Evals | Evals to Best | Best FOM | Best Design (L, Wp, Wn) | Specs Met |
+|-------|------------|---------------|----------|------------------------|-----------|
+| 0 | 128 | 125 | 1.347 | (0.3, 1.0, 2.0) | ✓ |
+| 1 | 130 | 127 | 1.347 | (0.3, 1.0, 2.0) | ✓ |
+| 2 | 113 | 109 | 1.347 | (0.3, 1.0, 2.0) | ✓ |
+| **Total** | **371** | — | — | — | 3/3 |
 
-All three trials successfully met specifications. Trial 0 found the optimum in a single LHS iteration (25 designs). Trial 1 saw the LLM consciously override the narrowing recommendation for `W_pmos` to "avoid locking the search into an infeasible region" — a model-level risk aversion, not a prompt design issue. The sensitivity analysis correctly identified `W_pmos=1.0` as DOMINANT (9/10 top designs, 90%) at the minimum boundary and recommended narrowing; the LLM acknowledged this reasoning but chose to expand instead.
+Best design found at ~96% of budget. LLM knew L=0.3 dominated but never narrowed — ~150 simulations wasted on suboptimal values.
+
+#### After Fix (May 21 re-run)
+
+| Trial | Total Evals | Evals to Best | Best FOM | Best Design (L, Wp, Wn) | Specs Met | Reduction |
+|-------|------------|---------------|----------|------------------------|-----------|-----------|
+| 0 | 25 | 24 | 1.337 | (0.3, 1.0, 2.0) | ✓ | 80% |
+| 1 | 111 | 105 | 1.205 | (0.3, 1.0, 2.0) | ✓ | 15% |
+| 2 | 58 | 53 | 1.337 | (0.3, 1.0, 2.0) | ✓ | 49% |
+| **Total** | **194** | — | — | — | 3/3 | **48%** |
+
+Trial 0 found the optimum in a single LHS iteration (25 designs). Trial 1 saw the LLM consciously override the narrowing recommendation for `W_pmos` to "avoid locking the search into an infeasible region" — a model-level risk aversion, not a prompt design issue. The sensitivity analysis correctly identified `W_pmos=1.0` as DOMINANT (9/10 top designs, 90%) at the minimum boundary and recommended narrowing; the LLM acknowledged this reasoning but chose to expand instead.
