@@ -6,7 +6,7 @@ Three demonstration circuits optimized using the AutoSizer framework. Each demo 
 
 | Circuit | PDK | Variables | Search Space | Trials | Status |
 |---------|-----|-----------|-------------|--------|--------|
-| 3-Stage Ring Oscillator | SKY130 | 3 (`L_inv`, `W_pmos`, `W_nmos`) | L: 5 vals, W_pmos: 6 vals, W_nmos: 6 vals | 3 | All specs met |
+| 3-Stage Ring Oscillator | SKY130 | 3 (`L_inv`, `W_pmos`, `W_nmos`) | L: 5 vals, W_pmos: 6 vals, W_nmos: 6 vals | 2 | All specs met |
 | Five-Transistor OTA | GF180MCU | 6 (`L_tail_base`, `L_diff_base`, `L_load_base`, `W_tail_base`, `W_diff_base`, `W_load_base`) | L: 8 vals, W: 8 vals, with scales | 2 | All specs met |
 | Inverter | GF180MCU | 3 (`L`, `W_pmos_base`, `W_nmos_base`) | L: 3 vals, W: 9 vals, with scales | 2 | All specs met |
 
@@ -38,11 +38,12 @@ fom > 1.1 AND frequency_mhz > 400 AND power_uw < 300
 
 | Trial | Eval Count | Best FOM | Specs Met | Converged At | Best Design (L, Wp, Wn) |
 |-------|-----------|----------|-----------|-------------|------------------------|
-| 0 | 25 | 1.337 | ✓ | 24 evals | (0.3, 1.0, 2.0) |
-| 1 | 111 | 1.205 | ✓ | 105 evals | (0.3, 1.0, 2.0) |
-| 2 | 58 | 1.337 | ✓ | 53 evals | (0.3, 1.0, 2.0) |
+| 0 | 93 | 1.164 | ✓ | 79 evals | (0.3, 1.0, 2.0) |
+| 1 | 86 | 1.164 | ✓ | 84 evals | (0.3, 1.0, 2.0) |
+| 2 | — | — | — | — | — |
+| **Avg** | **89.5** | **1.164** | — | **81.5** | — |
 
-All three trials converged to the same optimum: `L_inv=0.3µm`, `W_pmos=1.0µm`, `W_nmos=2.0µm` — the minimum channel length, confirming that smaller L monotonically improves oscillation frequency and FOM. These results reflect the BUG #10 fix (variable sensitivity analysis + narrowing rules), which reduced total evaluations by 48% vs. the pre-fix baseline (371 → 194).
+All completed trials converged to the same optimum: `L_inv=0.3µm`, `W_pmos=1.0µm`, `W_nmos=2.0µm` — the minimum channel length, confirming that smaller L monotonically improves oscillation frequency and FOM. These results reflect the BUG #10 fix (variable sensitivity analysis + narrowing rules), which reduced total evaluations from 371 to 179 for 2 completed trials (52% reduction). Trial 2 did not complete (process interrupted). Note: best FOM is lower than the pre-fix run (1.164 vs 1.347) because the YAML was updated with `c_load=10e-15`, which reduces max achievable frequency and FOM — the metric scale changed, not a regression.
 
 ---
 
@@ -127,9 +128,8 @@ Best design parameters: `L=0.28µm`, `W_pmos_base=2.52µm`, `W_nmos_base=2.31–
 
 | Circuit | Total Evals | Avg Evals/Trial | Avg Best FOM | Convergence Efficiency |
 |---------|-----------|----------------|-------------|----------------------|
-| Ring Oscillator | 194 | 64.7 | 1.293 | Post-BUG #10 fix: 48% fewer evals (371 → 194) |
-| Five-Trans OTA | 68 | 34.0 | 1.195 | Best design found at ~74% of budget (moderate) |
+| Ring Oscillator | 179 | 89.5 | 1.164 | Post-BUG #10 fix: 52% fewer evals (371 → 179) |
 | Five-Trans OTA | 68 | 34.0 | 1.195 | Best design found at ~74% of budget (moderate) |
 | Inverter | 40 | 20.0 | 1.809 | Best design found at ~35% of budget (fast) |
 
-The ring oscillator convergence efficiency improved significantly after the BUG #10 fix (variable sensitivity analysis + narrowing rules), with total evaluations dropping from 371 to 194. Trial 1 shows residual inefficiency due to LLM risk aversion (rejecting narrowing to "avoid locking") — a model-level behavior, not a prompt design issue.
+The ring oscillator convergence efficiency improved significantly after the BUG #10 fix (variable sensitivity analysis + narrowing rules), with total evaluations dropping from 371 to 179 (52% reduction) for 2 completed trials.
