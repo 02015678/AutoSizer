@@ -620,7 +620,6 @@ This keeps subspaces compact (3⁶=729 to 5⁶=15,625 combos) while the extremes
 | `problem_agent.py:114` | "5-7 values each, or all available..." → "3-5 values each, include smallest and largest from available list" |
 | `problem_agent.py:341` | "Each variable has 5-7 values (or all available if fewer)" → "Each variable has 3-5 values (smallest and largest always included)" |
 
----
 
 ## 10. LLM Fails to Narrow Search Space When Monotonic Dominance Exists — **FIXED 2026-05-21**
 
@@ -788,13 +787,123 @@ Four changes implemented across two files:
 
 Best design found at ~96% of budget. LLM knew L=0.3 dominated but never narrowed — ~150 simulations wasted on suboptimal values.
 
-#### After Fix (May 21 re-run)
+#### After Fix (9950ec7)
 
-| Trial | Total Evals | Evals to Best | Best FOM | Best Design (L, Wp, Wn) | Specs Met | Reduction |
-|-------|------------|---------------|----------|------------------------|-----------|-----------|
-| 0 | 25 | 24 | 1.337 | (0.3, 1.0, 2.0) | ✓ | 80% |
-| 1 | 111 | 105 | 1.205 | (0.3, 1.0, 2.0) | ✓ | 15% |
-| 2 | 58 | 53 | 1.337 | (0.3, 1.0, 2.0) | ✓ | 49% |
-| **Total** | **194** | — | — | — | 3/3 | **48%** |
+| Trial | Total Evals | Evals to Best | Best FOM | Best Design (L, Wp, Wn) | Specs Met |
+|-------|------------|---------------|----------|------------------------|-----------|
+| 0 | 93 | 79 | 1.164 | (0.3, 1.0, 2.0) | ✓ |
+| 1 | 86 | 84 | 1.164 | (0.3, 1.0, 2.0) | ✓ |
+| 2 | — | — | — | — | — |
+| **Avg** | **89.5** | **81.5** | **1.164** | — | — |
 
-Trial 0 found the optimum in a single LHS iteration (25 designs). Trial 1 saw the LLM consciously override the narrowing recommendation for `W_pmos` to "avoid locking the search into an infeasible region" — a model-level risk aversion, not a prompt design issue. The sensitivity analysis correctly identified `W_pmos=1.0` as DOMINANT (9/10 top designs, 90%) at the minimum boundary and recommended narrowing; the LLM acknowledged this reasoning but chose to expand instead.
+Eval count nearly halved (371 → 179 for 2 completed trials). Trial 2 did not complete (process interrupted). Note: best FOM is lower (1.164 vs 1.347) because the YAML was updated with `c_load=10e-15` which reduces max achievable frequency and FOM — the metric scale changed, not a regression.
+
+---
+
+## 11. Outer Loop Regeneration Expansion Bias — **OPEN**
+
+### The Problem
+
+The `CIRCUIT_REUNDERSTANDING_PROMPT` in `problem_agent.py` contains three directives that directly conflict with Factor 6's narrowing guidance:
+
+```
+Line 278: - Bias: Favor expansion over narrowing
+Line 328: 8. **Bias: When uncertain, choose expansion or unfixing over narrowing or convergence**
+Line 331: - **Default to action**: Prefer exploring (expand/unfix) over staying static
+```
+
+This creates a push-pull between the inner loop and outer loop:
+
+- **Inner loop** (Factor 6 in `prompts.py`): "DEFAULT BIAS toward narrowing" — narrow when ≥80% boundary dominance
+- **Outer loop** (problem_agent.py): "Favor expansion over narrowing" — expand ranges aggressively
+
+The outer loop's regeneration decisions override the inner loop's narrowed search space, undoing any efficiency gains. When the LLM re-optimizes after an inner loop completion, it reads both sets of instructions and the expansion bias typically wins.
+
+### Observed Impact
+
+In the May 18 run (pre-BUG #10 fix), the LLM's outer loop decisions kept expanding `L_inv` back to `[0.3, 0.4, 0.5, 0.6, 0.7]` iteration after iteration, even though the inner loop had already determined L=0.3 dominates. Each regeneration undid any narrowing.
+
+### Root Cause
+
+The `CIRCUIT_REUNDERSTANDING_PROMPT` was written with an exploration-first philosophy that predates Factor 6. It assumes the outer loop's job is to explore new regions, while Factor 6 recognizes that narrowing is more efficient once dominance is established.
+
+### Proposed Fix
+
+Replace the three expansion-biased lines with narrowing-aligned guidance:
+
+| Current | Proposed |
+|---------|----------|
+| "Bias: Favor expansion over narrowing" | "Bias: When a variable shows boundary dominance in top designs, narrow to that boundary value" |
+| "Bias: When uncertain, choose expansion or unfixing over narrowing or convergence" | "Expansion is appropriate when no variable shows clear dominance and top designs span ≥3 values" |
+| "Default to action: Prefer exploring (expand/unfix) over staying static" | "Default to action: Narrow when evidence is clear; keep current range when uncertain" |
+
+### Files Affected
+
+| File | Lines | Change |
+|------|-------|--------|
+| `problem_agent.py` | 273-334 | Replace expansion bias with narrowing guidance matching Factor 6 |
+
+### Status
+
+**OPEN** — No fix attempted yet. Fix is non-invasive (only prompt text changes in `problem_agent.py`).
+
+---
+
+## 12. Algorithm Selection Prompt Has Dead Entries and Wrong Priority — **OPEN**
+
+### The Problem
+
+The `methods_section()` in `prompts.py` lists 9 algorithms but only 3-4 are actually used in practice:
+
+| # | Algorithm | Used in Practice? | Notes |
+|---|-----------|-------------------|-------|
+| 1 | LHS | ✅ Frequently | First-iteration standard |
+| 2 | Genetic | ✅ Sometimes | Useful for diversity |
+| 3 | Bayesian | ❌ Rarely | Optuna (TPE) outperforms GP on discrete spaces |
+| 4 | Optuna | ✅ Frequently | Most effective for this project's discrete spaces |
+| 5 | Adaptive | ❌ Never | "Jack of all trades, master of none" — prompt itself admits this |
+| 6 | Annealing | ✅ Occasionally | Useful for escaping local optima |
+| 7 | Multistart | ❌ Rarely | Hasn't produced better results than Optuna/Genetic |
+| 8 | Random | ❌ Never | Redundant with LHS + seed rotation |
+| 9 | Refined | ❌ Never | Undocumented, unknown behavior |
+
+### Observed Impact
+
+1. **Prompt noise**: 6/9 algorithms are never or rarely used. Their presence dilutes the LLM's attention budget — each method description consumes tokens and cognitive load that could go toward more useful guidance.
+
+2. **Wrong priority ordering**: Optuna — empirically the most effective algorithm for this project's discrete search spaces — is listed at #4, behind Genetic (#2) and Bayesian (#3). The LLM is more likely to pick algorithms listed earlier.
+
+3. **"Best when" descriptions don't match project reality**: For example, Bayesian's "MOST sample-efficient" claim doesn't hold for discrete spaces where TPE consistently outperforms GP. Genetic's "Evolves toward good regions" sounds attractive but its 20-30 samples/iteration waste budget.
+
+### Related Issues
+
+- **BUG #11**: The problem_agent.py expansion bias compounds algorithm inefficiency — a suboptimal algorithm (e.g., Genetic with 30 samples) paired with an ever-expanding search space maximizes waste.
+- **BUG #10 fix**: The Factor 6 narrowing rules compensate for algorithm inefficiency, but fixing algorithm selection would address the root cause.
+
+### Proposed Fix
+
+Two changes:
+
+**A. Remove dead entries** — Remove Bayesian, Adaptive, Multistart, Random, and Refined from `methods_section()`. Keep only: LHS, Optuna, Genetic, Annealing.
+
+**B. Reorder by empirical effectiveness**:
+
+1. **LHS** — First-iteration space coverage
+2. **Optuna** — Primary refinement tool (TPE best for discrete spaces)
+3. **Genetic** — Secondary, use when Optuna stagnates
+4. **Annealing** — Escape tool for local optima
+
+### Files Affected
+
+| File | Change |
+|------|--------|
+| `prompts.py:95-175` | `methods_section()` — remove dead entries, reorder by empirical effectiveness |
+| `prompts.py:178-269` | `decision_framework_section()` — update method sequencing and "Need X → use Y" mappings |
+| `prompts.py:271-493` | `parameter_tuning_section()` — remove Bayesian, Adaptive, Multistart tuning params |
+| `prompts.py:495-555` | `response_format_section()` — update allowed method list |
+
+### Status
+
+**OPEN** — No fix attempted yet. Requires significant prompt restructuring. Risk: removing algorithms the LLM might someday find useful (but hasn't in 100+ iterations).
+
+
