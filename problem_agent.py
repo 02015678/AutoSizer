@@ -224,7 +224,7 @@ After {iterations_completed} iterations with {total_designs} designs evaluated, 
 ### Current Search Ranges (DEFAULT — preserve these unless evidence warrants change)
 **These are the ranges from the previous optimization cycle.** Start from these narrowed ranges.
 Expand toward original ranges ONLY when Factor 6 expansion conditions are met (≥3 values spanned OR best not at boundary).
-When uncertain, KEEP the current ranges rather than expanding.
+When data is ambiguous: if making steady progress → CONTINUE; if progress has stalled → take action (expand, narrow, or change focus) based on best available evidence.
 
 {value_ranges}
 
@@ -331,13 +331,12 @@ Decide on action based on the results:
 4. **You may expand up to the original YAML ranges (shown as "Maximum expansion boundary"), but only when Factor 6 expansion conditions are met**
 6. **Each variable: 3-5 discrete values (smallest and largest always included)**
 7. **Variables in "Fixed Parameters" section CAN be unfixed and optimized**
-8. **Bias: When uncertain, KEEP current ranges. Narrow only when Factor 6 conditions are met (>=80% boundary dominance + monotonic). Expand only when Factor 6 expansion conditions are met (>=3 values spanned OR best not at boundary).**
+8. **When data is ambiguous: if making steady progress → CONTINUE; if stalled → take action (expand, narrow, or change focus). Narrow when Factor 6 conditions are met (>=80% boundary dominance + monotonic). Expand when Factor 6 expansion conditions are met (>=3 values spanned OR best not at boundary).**
 
 ## SEARCH SPACE PHILOSOPHY
-- **Respect inner-loop narrowing**: The inner optimization loop may have already narrowed variables based on Factor 6 criteria (>=80% boundary dominance + monotonic). Preserve these narrowings unless new evidence explicitly contradicts them.
+- **Verify inner-loop narrowing**: The inner optimization loop may have narrowed variables based on Factor 6 criteria (>=80% boundary dominance + monotonic). Review whether the full results support these narrowings. Preserve them when the data confirms they are correct; override when evidence contradicts.
 - **Data-driven decisions**: Use Factor 6 criteria for both narrowing and expansion. Narrow when >=80% boundary dominance + monotonic. Expand when >=3 values spanned OR best not at boundary.
-- **Default to KEEP**: When uncertain, maintain current ranges rather than expanding or narrowing.
-- **Avoid both premature narrowing AND premature expansion**: A false narrowing wastes a few simulations. A missed narrowing wastes dozens. But a false expansion also wastes simulations on values the data has already ruled out.
+- **Avoid both premature narrowing AND premature expansion**: At the regeneration level, false narrowing and false expansion are equally costly — both consume a regeneration cycle. Base decisions on the data, not on a pre-set directional bias.
 
 ## VALIDATION CHECKLIST (Check before responding)
 - [ ] All variable names are from "Available Optimization Variables"
