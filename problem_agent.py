@@ -221,10 +221,16 @@ After {iterations_completed} iterations with {total_designs} designs evaluated, 
 **⚠️ WARNING: DO NOT use any variable names from the "Fixed Parameters" list above in your optimization_configuration. They are not available for optimization under any circumstances.**
 
 
-### Value Ranges (Your choices MUST be subsets of these)
+### Current Search Ranges (DEFAULT — preserve these unless evidence warrants change)
+**These are the ranges from the previous optimization cycle.** Start from these narrowed ranges.
+Expand toward original ranges ONLY when Factor 6 expansion conditions are met (≥3 values spanned OR best not at boundary).
+When uncertain, KEEP the current ranges rather than expanding.
+
 {value_ranges}
 
 **Original Full Search Space:** {original_search_space_size} combinations
+**Maximum expansion boundary (original YAML ranges):**
+{original_value_ranges}
 
 ## CURRENT CONFIGURATION
 
@@ -262,36 +268,36 @@ After {iterations_completed} iterations with {total_designs} designs evaluated, 
 ## YOUR TASK
 Decide on action based on the results:
 - `continue_current`: Keep current configuration (if performing well and not stagnant)
-- `expand_ranges`: Expand variable ranges (preferred if ANY designs at boundaries)
-- `narrow_ranges`: Narrow to promising regions (only if very clear winner region)
-- `unfix_variables`: Unfix some fixed variables (preferred if stagnation or suboptimal)
+- `expand_ranges`: Expand variable ranges (when top designs span >=3 values OR best value is NOT at a boundary)
+- `narrow_ranges`: Narrow to promising regions (when >=80% of top-10 designs share the same boundary value AND relationship is monotonic)
+- `unfix_variables`: Unfix some fixed variables (if stagnation or suboptimal)
 - `change_focus`: Swap optimized/fixed variables (if optimized var has low impact)
 - `converged`: Optimization complete (only if target met or exhausted search)
 
 ## DECISION GUIDELINES
 
-**Expand ranges (PREFERRED ACTION):** 
-- 20%+ of top designs at boundaries (lowered threshold)
-- Current range seems restrictive
-- FOM improvements still occurring
+**Expand ranges:**
+- Top designs span >=3 different values for a variable (genuine trade-off exists)
+- Best value is NOT at a boundary (room for further improvement in both directions)
+- FOM improvements still occurring with current range
 - Action: Add 2-3 adjacent values from original ranges on each boundary
-- Bias: Favor expansion over narrowing
 
-**Unfix variables (HIGHLY ENCOURAGED):** 
-- Any fixed variable could impact performance
+**Unfix variables:**
 - Stagnation detected (no improvement for 2+ iterations)
 - Current optimized variables explored adequately
 - Suspect interactions between fixed and optimized variables
-- Action: Unfix 1-2 most promising fixed variables with 5-7 values
-- Priority: Unfix before declaring convergence
+- Fixed variable's current value appears suboptimal based on data
+- Action: Unfix 1-2 most promising fixed variables with 3-5 values
+- Priority: Unfix before declaring convergence, but not before preserving validated narrowing
 
-**Narrow ranges (USE SPARINGLY):** 
-- Top 80%+ designs cluster tightly in middle 30% of range
-- Very clear single winner region (not just top design)
-- Action: Focus on 4-6 best values only
-- Warning: Only use if extremely confident
+**Narrow ranges:**
+- >=80% of top-10 designs share the same value for a variable
+- That value is at a boundary (minimum or maximum) of the current allowed range
+- The relationship appears monotonic (e.g., "always smaller -> better FOM")
+- Action: Fix the variable at the dominant boundary value (single value)
+- Note: The inner optimization loop may have already narrowed this variable based on data. Preserve such narrowing unless new evidence contradicts it.
 
-**Change focus (ENCOURAGED FOR EXPLORATION):** 
+**Change focus:** 
 - Optimized variable shows minimal variance in top designs (>70% same value)
 - All top designs converged to 1-2 values for a variable
 - Action: Fix the converged variable, unfix a new one
@@ -311,34 +317,34 @@ Decide on action based on the results:
 - Warning: Only declare convergence after aggressive exploration
 
 ## DECISION PRIORITY ORDER
-1. **Unfix variables** - if any fixed variables remain and performance stagnating
-2. **Expand ranges** - if any boundary clustering or improvements still occurring  
-3. **Change focus** - if optimized variable converged but performance suboptimal
-4. **Continue current** - if making progress and space not fully explored
-5. **Narrow ranges** - only if overwhelming evidence of tight optimal region
-6. **Converged** - only after exhausting all exploration options
+1. **Change focus** - if optimized variable converged but performance suboptimal
+2. **Expand ranges** - if top designs span >=3 values OR best not at boundary (matches inner loop Factor 6 criteria)
+3. **Narrow ranges** - if >=80% boundary dominance + monotonic (matches inner loop Factor 6 criteria)
+4. **Unfix variables** - if stagnation and fixed variable likely suboptimal
+5. **Continue current** - if making progress and space not fully explored
+6. **Converged** - only after exhausting all options
 
 ## CRITICAL CONSTRAINTS
 1. **ONLY use variables from "Available Optimization Variables" section above**
-2. **Value ranges MUST be subsets of the ranges shown in "Value Ranges" section**
+2. **Start from the "Current Search Ranges" — these are the narrowed ranges from the previous cycle**
 3. **DO NOT create new variables like 'L' if they are fixed parameters**
-4. **DO NOT use values outside the allowed ranges**
-6. **Each variable: 5-7 discrete values (increased from 3-7 for more exploration)**
+4. **You may expand up to the original YAML ranges (shown as "Maximum expansion boundary"), but only when Factor 6 expansion conditions are met**
+6. **Each variable: 3-5 discrete values (smallest and largest always included)**
 7. **Variables in "Fixed Parameters" section CAN be unfixed and optimized**
-8. **Bias: When uncertain, choose expansion or unfixing over narrowing or convergence**
+8. **Bias: When uncertain, KEEP current ranges. Narrow only when Factor 6 conditions are met (>=80% boundary dominance + monotonic). Expand only when Factor 6 expansion conditions are met (>=3 values spanned OR best not at boundary).**
 
-## EXPLORATION PHILOSOPHY
-- **Default to action**: Prefer exploring (expand/unfix) over staying static
-- **Maximize search space**: Unfix variables aggressively before claiming convergence
-- **Trust the data**: Only narrow when >80% of evidence supports it
-- **Avoid premature convergence**: If in doubt, explore more
+## SEARCH SPACE PHILOSOPHY
+- **Respect inner-loop narrowing**: The inner optimization loop may have already narrowed variables based on Factor 6 criteria (>=80% boundary dominance + monotonic). Preserve these narrowings unless new evidence explicitly contradicts them.
+- **Data-driven decisions**: Use Factor 6 criteria for both narrowing and expansion. Narrow when >=80% boundary dominance + monotonic. Expand when >=3 values spanned OR best not at boundary.
+- **Default to KEEP**: When uncertain, maintain current ranges rather than expanding or narrowing.
+- **Avoid both premature narrowing AND premature expansion**: A false narrowing wastes a few simulations. A missed narrowing wastes dozens. But a false expansion also wastes simulations on values the data has already ruled out.
 
 ## VALIDATION CHECKLIST (Check before responding)
 - [ ] All variable names are from "Available Optimization Variables"
-- [ ] All values are subsets of "Value Ranges"
+- [ ] All values are subsets of original YAML ranges (shown as "Maximum expansion boundary")
 - [ ] No fixed parameters (like L, vdd) are being optimized
 - [ ] Total optimized variables: 3-4
-- [ ] Each variable has 3-5 values (smallest and largest always included)
+- [ ] Each variable has 3-5 values
 - [ ] JSON is valid (no trailing commas, proper quotes)
 
 ## JSON FORMAT RULES

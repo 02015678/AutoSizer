@@ -462,7 +462,7 @@ def extract_optimization_config(reduction_data):
 class LLMOptimizationAgent:
     """LLM agent that guides the optimization process using Google Gemini with advanced methods"""
 
-    def __init__(self, config, model: str = "gemini-3-flash-preview", user_specs: str = None, num_variables_to_optimize: int = None):
+    def __init__(self, config, model: str = "gemini-2.5-flash", user_specs: str = None, num_variables_to_optimize: int = None):
         """
         Initialize LLM agent with Google Gemini
 
@@ -838,18 +838,18 @@ class LLMOptimizationAgent:
 
         # Extract variable impact summary from circuit_data
         variable_impact_lines = []
-        for metric, impact_text in circuit_data['optimization_variables_impact'].items():
+        for metric, impact_text in circuit_data.get('optimization_variables_impact', {}).items():
             variable_impact_lines.append(f"**{metric}:**\n{impact_text}")
         variable_impact_summary = '\n\n'.join(variable_impact_lines)
 
         # Extract variable interactions
-        variable_interactions = circuit_data['variable_interactions']
+        variable_interactions = circuit_data.get('variable_interactions', 'No interaction data available.')
 
         # Extract key insights
         key_insights_lines = []
-        for i, insight in enumerate(circuit_data['key_insights_for_optimization'], 1):
+        for i, insight in enumerate(circuit_data.get('key_insights_for_optimization', []), 1):
             key_insights_lines.append(f"{i}. {insight}")
-        key_insights = '\n'.join(key_insights_lines)
+        key_insights = '\n'.join(key_insights_lines) if key_insights_lines else "No key insights available."
 
         search_space_reduction_prompt = SEARCH_SPACE_REDUCTION_PROMPT.format(
             subckt_name=self.config['subckt_name'],
@@ -940,18 +940,18 @@ class LLMOptimizationAgent:
 
         # Extract variable impact summary from circuit_data
         variable_impact_lines = []
-        for metric, impact_text in circuit_data['optimization_variables_impact'].items():
+        for metric, impact_text in circuit_data.get('optimization_variables_impact', {}).items():
             variable_impact_lines.append(f"**{metric}:**\n{impact_text}")
         variable_impact_summary = '\n\n'.join(variable_impact_lines)
 
         # Extract variable interactions
-        variable_interactions = circuit_data['variable_interactions']
+        variable_interactions = circuit_data.get('variable_interactions', 'No interaction data available.')
 
         # Extract key insights
         key_insights_lines = []
-        for i, insight in enumerate(circuit_data['key_insights_for_optimization'], 1):
+        for i, insight in enumerate(circuit_data.get('key_insights_for_optimization', []), 1):
             key_insights_lines.append(f"{i}. {insight}")
-        key_insights = '\n'.join(key_insights_lines)
+        key_insights = '\n'.join(key_insights_lines) if key_insights_lines else "No key insights available."
 
         # Format target_metric as human-readable string
         target_metric_str = f"""
@@ -2635,12 +2635,12 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
             if circuit_data:
                 print(" Circuit understanding complete!")
                 print(f"\n Analysis Summary:")
-                print(f"   • Circuit Overview: {circuit_data['circuit_topology_overview']}...")
+                print(f"   • Circuit Overview: {circuit_data.get('circuit_topology_overview', 'N/A')}...")
                 print(f"   • Variables Analyzed: {len(circuit_data.get('optimization_variables_mapping', '').split('.'))}")
-                print(f"   • Key Insights: {len(circuit_data['key_insights_for_optimization'])}")
+                print(f"   • Key Insights: {len(circuit_data.get('key_insights_for_optimization', []))}")
 
                 print(f"\n Top Insights:")
-                for i, insight in enumerate(circuit_data['key_insights_for_optimization'], 1):
+                for i, insight in enumerate(circuit_data.get('key_insights_for_optimization', []), 1):
                     print(f"   {i}. {insight}")
             else:
                 print(" Circuit understanding failed, proceeding without search space reduction")
@@ -2761,10 +2761,7 @@ def run_llm_guided_optimization(config, max_total_designs: int = 250,
 
 
 
-        if optimization_config['num_combinations'] < max_total_designs:
-            total_designs = optimization_config['num_combinations']
-        else:
-            total_designs = max_total_designs
+        total_designs = max_total_designs
 
 
         while (len(optimizer.all_searched_designs) < total_designs and not specs_met and not fom_converged):
