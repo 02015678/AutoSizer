@@ -101,8 +101,14 @@ def aggregate_trial_metrics_across_dirs(base_results_dir, n_trials):
     }
 
 CIRCUIT_REGISTRY = {
-    "bandgap_reference": {
-        "config_path": "./circuits_yaml/bandgap_reference.yaml"
+    "inverter_gf": {
+        "config_path": "./circuits_yaml/inverter_gf.yaml"
+    },
+    "five_trans_ota_gf": {
+        "config_path": "./circuits_yaml/five_trans_ota_gf.yaml"
+    },
+    "3_stage_ring_osc_new": {
+        "config_path": "./circuits_yaml/3_stage_ring_osc_new.yaml"
     }
 }
 

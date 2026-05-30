@@ -61,11 +61,56 @@ def prepare_format_params(feedback_dict, current_config, netlist, original_confi
             available_vars_lines.append(f"- {var_name}: (no range defined)")
     available_variables = '\n'.join(available_vars_lines)
     
-    # Format value ranges section
+    # Format value ranges section — show CURRENT narrowed ranges as default,
+    # with original YAML ranges shown as the maximum expansion boundary.
     value_ranges_lines = []
-    for var_name, values in original_value_ranges.items():
-        value_ranges_lines.append(f"- {var_name}: {values}")
+    for var_name in available_vars:
+        original_range = original_value_ranges.get(var_name, [])
+        if not original_range:
+            value_ranges_lines.append(f"- {var_name}: (no range defined)")
+            continue
+
+        # Get current range from previous cycle's config
+        current_range = None
+        if current_config:
+            vt = current_config.get('variables_to_optimize', {})
+            if var_name in vt:
+                vinfo = vt[var_name]
+                if isinstance(vinfo, dict):
+                    current_range = vinfo.get('search_space', [])
+                else:
+                    current_range = vinfo
+            elif var_name in current_config.get('variables_fixed', {}):
+                vinfo = current_config['variables_fixed'].get(var_name, {})
+                if isinstance(vinfo, dict):
+                    current_range = [vinfo.get('fixed_value')]
+                else:
+                    current_range = [vinfo]
+
+        if current_range and len(current_range) > 0:
+            # Verify current_range is subset of original
+            if all(v in original_range for v in current_range):
+                if len(current_range) < len(original_range):
+                    # Was narrowed — show as current default with expansion boundary
+                    value_ranges_lines.append(
+                        f"- {var_name}: {current_range}  "
+                        f"(narrowed from original: {original_range})"
+                    )
+                else:
+                    # Same as original — just show the range
+                    value_ranges_lines.append(f"- {var_name}: {current_range}")
+            else:
+                # Invalid: values outside original range, fall back to original
+                value_ranges_lines.append(f"- {var_name}: {original_range}")
+        else:
+            # No previous narrowing — show original range
+            value_ranges_lines.append(f"- {var_name}: {original_range}")
+
     value_ranges_str = '\n'.join(value_ranges_lines) if value_ranges_lines else "No ranges defined"
+    original_value_ranges_str = '\n'.join(
+        f"- {var_name}: {values}"
+        for var_name, values in original_value_ranges.items()
+    ) if original_value_ranges else "No ranges defined"
     
     # Get fixed parameters (params that are NOT in variable:)
     original_params = original_config.get('params', {})
@@ -203,9 +248,13 @@ def prepare_format_params(feedback_dict, current_config, netlist, original_confi
                 at_max = boundary['at_max_boundary']
                 total = boundary['total_top_designs']
                 
-                if at_min >= total * 0.4:
+                if at_min >= total * 0.8:
+                    impact_section += f"\n  ★ {at_min}/{total} at LOWER boundary → NARROW: Fix at minimum (≥80% dominance, Factor 6)"
+                elif at_min >= total * 0.4:
                     impact_section += f"\n  ⚠️ {at_min}/{total} at LOWER boundary → Consider expanding range"
-                if at_max >= total * 0.4:
+                if at_max >= total * 0.8:
+                    impact_section += f"\n  ★ {at_max}/{total} at UPPER boundary → NARROW: Fix at maximum (≥80% dominance, Factor 6)"
+                elif at_max >= total * 0.4:
                     impact_section += f"\n  ⚠️ {at_max}/{total} at UPPER boundary → Consider expanding range"
             
             if stats:
@@ -271,6 +320,7 @@ def prepare_format_params(feedback_dict, current_config, netlist, original_confi
         'available_variables': available_variables,
         'fixed_parameters': fixed_parameters,
         'value_ranges': value_ranges_str,
+        'original_value_ranges': original_value_ranges_str,
         'original_search_space_size': f"{original_search_space_size:,}",
         
         # Current search space
@@ -987,9 +1037,13 @@ def analyze_variable_impact(iteration_history: List[Dict],
             }
             
             # Recommendation
-            if at_max >= len(top_values) * 0.4:  # 40% at upper boundary
+            if at_max >= len(top_values) * 0.8:  # 80%+ at upper boundary → narrow
+                var_analysis['recommendation'] = 'narrow_to_max'
+            elif at_min >= len(top_values) * 0.8:  # 80%+ at lower boundary → narrow
+                var_analysis['recommendation'] = 'narrow_to_min'
+            elif at_max >= len(top_values) * 0.4:  # 40%+ at upper boundary → expand
                 var_analysis['recommendation'] = 'expand_upper_range'
-            elif at_min >= len(top_values) * 0.4:  # 40% at lower boundary
+            elif at_min >= len(top_values) * 0.4:  # 40%+ at lower boundary → expand
                 var_analysis['recommendation'] = 'expand_lower_range'
             elif max(top_values) - min(top_values) < (max_possible - min_possible) * 0.3:
                 var_analysis['recommendation'] = 'narrow_range'
@@ -1012,20 +1066,36 @@ def detect_search_space_issues(variable_impact: Dict,
             boundary = analysis['boundary_clustering']
             total = boundary['total_top_designs']
             
-            if boundary['at_max_boundary'] >= total * 0.4:
+            if boundary['at_max_boundary'] >= total * 0.8:
+                issues.append({
+                    'type': 'upper_boundary_dominance',
+                    'variable': var,
+                    'severity': 'high',
+                    'description': f"{var} has {boundary['at_max_boundary']}/{total} top designs at upper boundary (≥80% dominance)",
+                    'action': 'narrow_to_max'
+                })
+            elif boundary['at_max_boundary'] >= total * 0.4:
                 issues.append({
                     'type': 'upper_boundary_limit',
                     'variable': var,
-                    'severity': 'high',
+                    'severity': 'medium',
                     'description': f"{var} has {boundary['at_max_boundary']}/{total} top designs at upper boundary",
                     'action': 'expand_upper_range'
                 })
-            
-            if boundary['at_min_boundary'] >= total * 0.4:
+
+            if boundary['at_min_boundary'] >= total * 0.8:
+                issues.append({
+                    'type': 'lower_boundary_dominance',
+                    'variable': var,
+                    'severity': 'high',
+                    'description': f"{var} has {boundary['at_min_boundary']}/{total} top designs at lower boundary (≥80% dominance)",
+                    'action': 'narrow_to_min'
+                })
+            elif boundary['at_min_boundary'] >= total * 0.4:
                 issues.append({
                     'type': 'lower_boundary_limit',
                     'variable': var,
-                    'severity': 'high',
+                    'severity': 'medium',
                     'description': f"{var} has {boundary['at_min_boundary']}/{total} top designs at lower boundary",
                     'action': 'expand_lower_range'
                 })

@@ -800,11 +800,11 @@ Eval count nearly halved (371 → 179 for 2 completed trials). Trial 2 did not c
 
 ---
 
-## 11. Outer Loop Regeneration Expansion Bias — **OPEN**
+## 11. Outer Loop Regeneration Expansion Bias — **FIXED 2026-05-29**
 
 ### The Problem
 
-The `CIRCUIT_REUNDERSTANDING_PROMPT` in `problem_agent.py` contains three directives that directly conflict with Factor 6's narrowing guidance:
+The `CIRCUIT_REUNDERSTANDING_PROMPT` in `problem_agent.py` contained systematic expansion-bias language that conflicted with Factor 6's narrowing guidance in `prompts.py`. Three specific directives pushed the LLM to expand rather than narrow:
 
 ```
 Line 278: - Bias: Favor expansion over narrowing
@@ -812,40 +812,63 @@ Line 328: 8. **Bias: When uncertain, choose expansion or unfixing over narrowing
 Line 331: - **Default to action**: Prefer exploring (expand/unfix) over staying static
 ```
 
-This creates a push-pull between the inner loop and outer loop:
+When the inner loop correctly narrowed a variable (e.g., `L_inv → [0.3]` based on 80%+ top-design boundary dominance), the outer loop's regeneration prompt forced the LLM to expand it back to the full range, undoing efficiency gains.
 
-- **Inner loop** (Factor 6 in `prompts.py`): "DEFAULT BIAS toward narrowing" — narrow when ≥80% boundary dominance
-- **Outer loop** (problem_agent.py): "Favor expansion over narrowing" — expand ranges aggressively
-
-The outer loop's regeneration decisions override the inner loop's narrowed search space, undoing any efficiency gains. When the LLM re-optimizes after an inner loop completion, it reads both sets of instructions and the expansion bias typically wins.
-
-### Observed Impact
-
-In the May 18 run (pre-BUG #10 fix), the LLM's outer loop decisions kept expanding `L_inv` back to `[0.3, 0.4, 0.5, 0.6, 0.7]` iteration after iteration, even though the inner loop had already determined L=0.3 dominates. Each regeneration undid any narrowing.
+**Observed in 3-stage ring oscillator run:** ~150 simulations (~40% of budget) wasted on suboptimal L_inv values that the inner loop had already ruled out.
 
 ### Root Cause
 
-The `CIRCUIT_REUNDERSTANDING_PROMPT` was written with an exploration-first philosophy that predates Factor 6. It assumes the outer loop's job is to explore new regions, while Factor 6 recognizes that narrowing is more efficient once dominance is established.
+Three layers of expansion bias in the regeneration prompt:
 
-### Proposed Fix
+1. **Strong labels**: "PREFERRED ACTION" on expand, "HIGHLY ENCOURAGED" on unfix, "USE SPARINGLY" on narrow
+2. **Wrong criteria**: Narrowing used "middle 30% clustering" instead of Factor 6's boundary dominance test; expansion used a 20% threshold instead of Factor 6's ≥3 values spanned test
+3. **Philosophy section**: Four directives all pushing toward expansion ("Default to action: Prefer exploring", "Maximize search space", "Avoid premature convergence")
 
-Replace the three expansion-biased lines with narrowing-aligned guidance:
+Additionally, the decision priority order placed narrowing at #5 of 6, making it near-last resort.
 
-| Current | Proposed |
-|---------|----------|
-| "Bias: Favor expansion over narrowing" | "Bias: When a variable shows boundary dominance in top designs, narrow to that boundary value" |
-| "Bias: When uncertain, choose expansion or unfixing over narrowing or convergence" | "Expansion is appropriate when no variable shows clear dominance and top designs span ≥3 values" |
-| "Default to action: Prefer exploring (expand/unfix) over staying static" | "Default to action: Narrow when evidence is clear; keep current range when uncertain" |
+### The Fix
+
+**Location:** `problem_agent.py`, `CIRCUIT_REUNDERSTANDING_PROMPT` (lines 262–334). 10 prompt-text-only edits across three tiers:
+
+#### Tier 1 — Remove expansion bias (3 changes)
+
+- **Expand ranges guideline**: Removed "PREFERRED ACTION" label, 20% threshold, and "Bias: Favor expansion over narrowing"
+- **Uncertainty bias constraint**: Replaced "When uncertain, choose expansion or unfixing over narrowing or convergence" with Factor 6-aligned "KEEP current ranges" default
+- **Philosophy section**: Replaced "EXPLORATION PHILOSOPHY" (4 expansion directives) with "SEARCH SPACE PHILOSOPHY" (balanced: respect inner-loop narrowing, data-driven decisions, default to KEEP, avoid both premature narrowing AND premature expansion)
+
+#### Tier 2 — Add Factor 6 criteria (3 changes)
+
+- **Action list `narrow_ranges` description**: Replaced "only if very clear winner region" with Factor 6 criteria (≥80% boundary dominance + monotonic)
+- **Action list `expand_ranges` description**: Replaced "preferred if ANY designs at boundaries" with Factor 6 criteria (≥3 values spanned OR best not at boundary)
+- **Narrow ranges guideline**: Replaced wrong criteria ("middle 30% clustering") with Factor 6's three conditions + added inner-loop preservation note
+
+#### Tier 3 — Rebalance priority + fix inconsistencies (4 changes)
+
+- **Decision priority order**: Moved narrowing from #5 to #3 (not #1, to reduce over-narrowing risk). Order: Change focus → Expand → Narrow → Unfix → Continue → Converged
+- **Unfix variables guideline**: Removed "HIGHLY ENCOURAGED" label and "any fixed variable could impact performance" truism; added "preserve validated narrowing" clause
+- **Value count constraint**: Resolved 5-7 vs 3-5 inconsistency → 3-5 (matching BUG #9 fix)
+- **Validation checklist**: Consolidated value count constraint
+
+### Key Design Decisions
+
+1. **Narrowing at priority #3, not #1**: Reduces over-narrowing risk — the LLM checks focus change and expansion first, so narrowing only triggers when those don't apply AND Factor 6 conditions are met
+2. **Inner-loop preservation note**: Explicitly tells the LLM "The inner optimization loop may have already narrowed this variable based on data. Preserve such narrowing unless new evidence contradicts it."
+3. **KEEP default for uncertainty**: Matches Factor 6's "KEEP current range when uncertain" — neither expand nor narrow when evidence is ambiguous
+4. **Balanced cost framing**: "A false narrowing wastes a few simulations. A missed narrowing wastes dozens. But a false expansion also wastes simulations on values the data has already ruled out."
+
+### Why the prompt-only fix was insufficient
+
+After the initial BUG #11 fix (prompt text only), the 05-29 run was **worse** than the 05-21 run (BUG #10 fix only). Root cause: `feedback_extraction.py` still told the outer loop LLM "Consider expanding range" for every boundary-clustering variable, regardless of dominance level. Even when 90% of top designs were at L_inv=0.3, the data feed said "9/10 at LOWER boundary → Consider expanding range." The outer loop LLM followed the data over the prompt text, expanding L_inv back to full range each regeneration.
+
+The follow-up `feedback_extraction.py` fix added bidirectional boundary annotations: at ≥80% dominance it says "NARROW: Fix at minimum/maximum (Factor 6)" instead of "Consider expanding range."
 
 ### Files Affected
 
-| File | Lines | Change |
-|------|-------|--------|
-| `problem_agent.py` | 273-334 | Replace expansion bias with narrowing guidance matching Factor 6 |
-
-### Status
-
-**OPEN** — No fix attempted yet. Fix is non-invasive (only prompt text changes in `problem_agent.py`).
+| File | Change |
+|------|--------|
+| `problem_agent.py:262-334` | 10 prompt text edits in `CIRCUIT_REUNDERSTANDING_PROMPT` |
+| `utils/feedback_extraction.py:206-213` | Bidirectional boundary annotations: NARROW at ≥80% dominance, "Consider expanding" at ≥40% |
+| `utils/feedback_extraction.py:994-999` | Factor 6-aligned recommendation logic: `narrow_to_min/max` at ≥80%, `expand_lower/upper_range` at ≥40% |
 
 ---
 
@@ -905,5 +928,4 @@ Two changes:
 ### Status
 
 **OPEN** — No fix attempted yet. Requires significant prompt restructuring. Risk: removing algorithms the LLM might someday find useful (but hasn't in 100+ iterations).
-
 
