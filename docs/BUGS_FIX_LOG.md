@@ -870,6 +870,24 @@ The follow-up `feedback_extraction.py` fix added bidirectional boundary annotati
 | `utils/feedback_extraction.py:206-213` | Bidirectional boundary annotations: NARROW at ≥80% dominance, "Consider expanding" at ≥40% |
 | `utils/feedback_extraction.py:994-999` | Factor 6-aligned recommendation logic: `narrow_to_min/max` at ≥80%, `expand_lower/upper_range` at ≥40% |
 
+### BUG #11 Follow-up: Rebalance Prompt After Over-Correction — **FIXED 2026-05-30**
+
+After the BUG #11 fix (bidirectional annotations, sticky narrowing, KEEP default), an audit found the system was biased toward **inaction** rather than expansion or narrowing. Three "Default to KEEP" statements combined with sticky narrowing to create friction against any change when data was ambiguous, wasting regeneration cycles.
+
+**Four changes in `problem_agent.py` `CIRCUIT_REUNDERSTANDING_PROMPT`:**
+
+1. **Progress-gated guidance replaces "KEEP when uncertain"** (lines 227, 334): Instead of defaulting to KEEP, the prompt now gates on progress — if making steady progress → CONTINUE; if stalled → take action.
+
+2. **Symmetric cost claim** (line 340): Replaced "A false narrowing wastes a few simulations; a missed narrowing wastes dozens" (inner-loop math) with "At the regeneration level, false narrowing and false expansion are equally costly — both consume a regeneration cycle."
+
+3. **"Verify" replaces "Respect"** (line 337): Changed "Respect inner-loop narrowing... Preserve unless contradicted" to "Verify inner-loop narrowing... Review whether full results support; preserve when confirmed, override when contradicted." The outer loop should independently verify, not blindly defer.
+
+4. **Removed "Default to KEEP" philosophy** (line 339): Replaced with symmetric guidance: "Base decisions on the data, not on a pre-set directional bias."
+
+**Key insight:** Factor 6's narrowing bias ("false narrowing wastes a few, missed narrowing wastes dozens") is correct for the inner loop but doesn't transfer to the outer loop. At the regeneration level, both false narrowing and false expansion cost one cycle. Costs are symmetric.
+
+**Files affected:** `problem_agent.py` only (4 lines changed).
+
 ---
 
 ## 12. Algorithm Selection Prompt Has Dead Entries and Wrong Priority — **OPEN**
